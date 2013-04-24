@@ -1,6 +1,7 @@
 from spyvm import model, shadow
 
 from rpython.rlib import objectmodel, jit, signature
+from rpython.rlib.listsort import TimSort
 
 class TypeTag():
     pass
@@ -9,6 +10,13 @@ LPI = TypeTag()
 SInt = TypeTag()
 flt = TypeTag()
 obj = TypeTag()
+
+# may be used during debugging
+# LPI, SInt, flt, obj = 'LPI', 'SInt', 'float', 'object'
+
+class FieldSort(TimSort):
+    def lt(self, a, b):
+        return a[0] < b[0]
 
 maps = {}
 
@@ -74,16 +82,24 @@ class FieldTypes(VarSizedFieldTypes):
         elif parent is None:
             return self.descent([change])
         else:
-            new_fieldtype = parent.ascent([change, self.diff])
+            if n0 == self.diff[0]:
+                diff = [change]
+            else:
+                diff = [change, self.diff]
+
+            new_fieldtype = parent.ascent(diff)
+
             if not objectmodel.we_are_translated():
-                assert new_fieldtype.types == self.types[0:n0] + [changed_type] + self.types[n0+1:]
+                new_types = list(self.types)
+                new_types[n0] = changed_type
+                assert new_fieldtype.types == new_types
             siblings[change] = new_fieldtype
             return new_fieldtype
 
     def ascent(self, changes):
         parent = self.parent
         if parent is None:
-            sort(changes)
+            FieldSort(changes).sort()
             return self.descent(changes)
         else:
             change = self.diff
@@ -96,11 +112,14 @@ class FieldTypes(VarSizedFieldTypes):
             return self
 
         change = changes[0]
+        if change[1] is obj:
+            return self.descent(changes[1:])
         siblings = self.siblings
         if change in siblings:
             return siblings[change].descent(changes[1:])
         else:
             new_types = list(self.types)
+            assert new_types[change[0]] == obj
             new_types[change[0]] = change[1]
             new_fieldtype = FieldTypes(new_types, self, change)
             siblings[change] = new_fieldtype
@@ -137,32 +156,3 @@ def fieldtypes_of(w_obj):
             return typer
     except AttributeError:
         return nilTyper
-
-def sort(an_array):
-    end = len(an_array) - 1
-    sort_quick_inplace(an_array, 0, end)
-
-
-def sort_quick_inplace(an_array, start, end):
-    assert start >= 0 and end < len(an_array)
-
-    def partition(an_array, start, end):
-        key = an_array[start][0]
-        i = start - 1
-        j = end + 1
-        while True:
-            i += 1
-            j -= 1
-            while not an_array[j][0] <= key:
-                j -= 1
-            while not an_array[i][0] >= key:
-                i += 1
-            if j <= i:
-                return j
-            else:
-                an_array[i], an_array[j] = an_array[j], an_array[i]
-
-    if start < end:
-        mid = partition(an_array, start, end)
-        sort_quick_inplace(an_array, start, mid)
-        sort_quick_inplace(an_array, mid + 1, end)
