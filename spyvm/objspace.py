@@ -227,6 +227,10 @@ class ObjSpace(object):
     def wrap_char(self, c):
         return self.w_charactertable.fetch(self, ord(c))
 
+    def wrap_rbigint(self, b):
+        bytes
+        w_lpi = self.w_LargePositiveInteger.as_class_get_shadow(self).new(
+
     def wrap_bool(self, b):
         if b:
             return self.w_true
@@ -297,6 +301,26 @@ class ObjSpace(object):
         assert isinstance(w_array, model.W_PointersObject)
 
         return [w_array.at0(self, i) for i in range(w_array.size())]
+
+    def unwrap_rbigint(self, w_arg):
+        if isinstance(w_arg, model.W_SmallInteger):
+            arg = rbigint.fromint(space.unwrap_int(w_arg))
+        elif isinstance(w_arg, model.W_LargePositiveInteger1Word):
+            arg = rbigint.fromint(space.unwrap_uint(w_arg))
+        elif isinstance(w_arg, model.W_BytesObject):
+            # TODO: Check actual classes?
+            arg = rbigint.frombytes(w_arg.bytes, 'little', False)
+            if interp.space.getclass(w_arg) is not self.w_LargePositiveInteger:
+                arg = arg.neg()
+        else:
+            raise error.PrimitiveFailedError
+        return arg
+
+    def unwrap_bool(self, w_arg):
+        if w_arg not in (self.w_true, self.w_false):
+            raise PrimitiveFailedError
+        else:
+            return w_arg is self.w_true
 
     def get_display(self):
         w_display = self.objtable['w_display']

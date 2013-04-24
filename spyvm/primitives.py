@@ -8,7 +8,7 @@ from spyvm.error import PrimitiveFailedError, \
     PrimitiveNotYetWrittenError
 from spyvm import wrapper
 
-from rpython.rlib import rarithmetic, rfloat, unroll, jit
+from rpython.rlib import rarithmetic, rfloat, unroll, jit, rbigint
 
 def assert_bounds(n0, minimum, maximum):
     if not minimum <= n0 < maximum:
@@ -134,6 +134,10 @@ def wrap_primitive(unwrap_spec=None, no_result=False,
                         args += (interp.space.unwrap_array(w_arg), )
                     elif spec is char:
                         args += (unwrap_char(w_arg), )
+                    elif spec is rbigint:
+                        arg += (interp.space.unwrap_rbigint(w_arg), )
+                    elif spec is bool:
+                        arg += (interp.space.unwrap_bool(w_arg), )
                     else:
                         raise NotImplementedError(
                             "unknown unwrap_spec %s" % (spec, ))
