@@ -4,7 +4,7 @@ from spyvm.shadow import AbstractCachingShadow
 from spyvm.plugins.plugin import Plugin
 
 from rpython.rlib import jit, objectmodel
-from rpython.rlib.rarithmetic import intmask, r_uint32, r_uint
+from rpython.rlib.rarithmetic import intmask, r_uint
 
 
 BitBltPlugin = Plugin()
@@ -264,19 +264,19 @@ class BitBltShadow(AbstractCachingShadow):
             destWord = self.dest.w_bits.getword(self.destIndex)
             mergeWord = self.mergeFn(halftoneWord, destWord)
             destWord = (destMask & mergeWord) | (destWord & (~destMask))
-            self.dest.w_bits.setword(self.destIndex, r_uint32(destWord))
+            self.dest.w_bits.setword(self.destIndex, destWord)
             self.destIndex += 1
             destMask = BitBltShadow.AllOnes
             # the central horizontal loop requires no store masking
             if self.combinationRule == 3: # store rule requires no dest merging
                 for word in range(2, self.nWords):
-                    self.dest.w_bits.setword(self.destIndex, r_uint32(halftoneWord))
+                    self.dest.w_bits.setword(self.destIndex, halftoneWord)
                     self.destIndex += 1
             else:
                 for word in range(2, self.nWords):
                     destWord = self.dest.w_bits.getword(self.destIndex)
                     mergeWord = self.mergeFn(halftoneWord, destWord)
-                    self.dest.w_bits.setword(self.destIndex, r_uint32(mergeWord))
+                    self.dest.w_bits.setword(self.destIndex, mergeWord)
                     self.destIndex += 1
             # last word in row is masked
             if self.nWords > 1:
@@ -284,7 +284,7 @@ class BitBltShadow(AbstractCachingShadow):
                 destWord = self.dest.w_bits.getword(self.destIndex)
                 mergeWord = self.mergeFn(halftoneWord, destWord)
                 destWord = (destMask & mergeWord) | (destWord & (~destMask))
-                self.dest.w_bits.setword(self.destIndex, r_uint32(destWord))
+                self.dest.w_bits.setword(self.destIndex, destWord)
                 self.destIndex += 1
             self.destIndex += self.destDelta
 
@@ -346,13 +346,13 @@ class BitBltShadow(AbstractCachingShadow):
                 if self.destMask == BitBltShadow.AllOnes: # avoid read-modify-write
                     self.dest.w_bits.setword(
                         self.destIndex,
-                        r_uint32(self.mergeFn(skewWord & halftoneWord, self.dest.w_bits.getword(self.destIndex)))
+                        self.mergeFn(skewWord & halftoneWord, self.dest.w_bits.getword(self.destIndex))
                     )
                 else: # General version using dest masking
                     destWord = self.dest.w_bits.getword(self.destIndex)
                     mergeWord = self.mergeFn(skewWord & halftoneWord, destWord & self.destMask)
                     destWord = (self.destMask & mergeWord) | (destWord & (~self.destMask))
-                    self.dest.w_bits.setword(self.destIndex, r_uint32(destWord))
+                    self.dest.w_bits.setword(self.destIndex, destWord)
 
                 self.destIndex += 1
                 if (self.nWords == 2): # is the next word the last word?
@@ -458,7 +458,7 @@ class BitBltShadow(AbstractCachingShadow):
             destWord = self.dest.w_bits.getword(self.destIndex)
             mergeWord = self.mergeFn(skewWord & halftoneWord, destWord)
             destWord = (destMask & mergeWord) | (destWord & (~destMask))
-            self.dest.w_bits.setword(self.destIndex, r_uint32(destWord))
+            self.dest.w_bits.setword(self.destIndex, destWord)
             # The central horizontal loop requires no store masking
             self.destIndex += hInc
             destMask = BitBltShadow.AllOnes
@@ -468,12 +468,12 @@ class BitBltShadow(AbstractCachingShadow):
                     if (self.hDir == -1):
                         for word in range(2, self.nWords):
                             thisWord = self.source.w_bits.getword(self.sourceIndex)
-                            self.dest.w_bits.setword(self.destIndex, r_uint32(thisWord))
+                            self.dest.w_bits.setword(self.destIndex, thisWord)
                             self.sourceIndex += hInc
                             self.destIndex += hInc
                     else:
                         for word in range(2, self.nWords):
-                            self.dest.w_bits.setword(self.destIndex, r_uint32(prevWord))
+                            self.dest.w_bits.setword(self.destIndex, prevWord)
                             prevWord = self.source.w_bits.getword(self.sourceIndex)
                             self.destIndex += hInc
                             self.sourceIndex += hInc
@@ -484,7 +484,7 @@ class BitBltShadow(AbstractCachingShadow):
                         self.sourceIndex += hInc
                         skewWord = self.rotate32bit(thisWord, prevWord, skewMask, notSkewMask, unskew)
                         prevWord = thisWord
-                        self.dest.w_bits.setword(self.destIndex, r_uint32(skewWord & halftoneWord))
+                        self.dest.w_bits.setword(self.destIndex, skewWord & halftoneWord)
                         self.destIndex += hInc
             else: # Dest merging here...
                 for word in range(2, self.nWords):
@@ -493,7 +493,7 @@ class BitBltShadow(AbstractCachingShadow):
                     skewWord = self.rotate32bit(thisWord, prevWord, skewMask, notSkewMask, unskew)
                     prevWord = thisWord
                     mergeWord = self.mergeFn(skewWord & halftoneWord, self.dest.w_bits.getword(self.destIndex))
-                    self.dest.w_bits.setword(self.destIndex, r_uint32(mergeWord))
+                    self.dest.w_bits.setword(self.destIndex, mergeWord)
                     self.destIndex += hInc
             # last word with masking and all
             if (self.nWords > 1):
@@ -507,7 +507,7 @@ class BitBltShadow(AbstractCachingShadow):
                 destWord = self.dest.w_bits.getword(self.destIndex)
                 mergeWord = self.mergeFn(skewWord & halftoneWord, destWord)
                 destWord = (destMask & mergeWord) | (destWord & (~destMask))
-                self.dest.w_bits.setword(self.destIndex, r_uint32(destWord))
+                self.dest.w_bits.setword(self.destIndex, destWord)
                 self.destIndex += hInc
             self.sourceIndex += self.sourceDelta
             self.destIndex += self.destDelta
@@ -521,7 +521,6 @@ class BitBltShadow(AbstractCachingShadow):
 
     @objectmodel.specialize.arg_or_var(3)
     def merge(self, source_word, dest_word, combinationRule):
-        # assert isinstance(source_word, r_uint) and isinstance(dest_word, r_uint)
         if combinationRule == 0:
             return 0
         elif combinationRule == 1:

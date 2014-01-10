@@ -2,7 +2,6 @@ import weakref
 from spyvm import model, constants, error, wrapper
 from rpython.tool.pairtype import extendabletype
 from rpython.rlib import rarithmetic, jit
-from rpython.rlib.rarithmetic import r_uint
 
 
 def make_elidable_after_versioning(func):
@@ -650,7 +649,7 @@ class ContextPartShadow(AbstractRedirectingShadow):
         self._temps_and_stack = [None] * (stacksize + tempsize)
         for i in range(tempsize):
             self._temps_and_stack[i] = self.space.w_nil
-        self._stack_ptr = r_uint(tempsize) # we point after the last element
+        self._stack_ptr = rarithmetic.r_uint(tempsize) # we point after the last element
 
     # ______________________________________________________________________
     # Stack Manipulation
@@ -683,11 +682,11 @@ class ContextPartShadow(AbstractRedirectingShadow):
         return self.peek(0)
 
     def set_top(self, value, position=0):
-        rpos = r_uint(position)
+        rpos = rarithmetic.r_uint(position)
         self._temps_and_stack[self._stack_ptr + ~rpos] = value
 
     def peek(self, idx):
-        rpos = r_uint(idx)
+        rpos = rarithmetic.r_uint(idx)
         return self._temps_and_stack[jit.promote(self._stack_ptr) + ~rpos]
 
     @jit.unroll_safe

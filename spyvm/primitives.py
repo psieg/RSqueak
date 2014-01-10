@@ -5,11 +5,11 @@ import operator
 from spyvm import model, shadow
 from spyvm import constants, display
 from spyvm.error import PrimitiveFailedError, \
-    PrimitiveNotYetWrittenError
+    PrimitiveNotYetWrittenError, WrappingError
 from spyvm import wrapper
 
 from rpython.rlib import rarithmetic, rfloat, unroll, jit
-from rpython.rlib.rarithmetic import r_uint32, r_uint
+from rpython.rlib.rarithmetic import r_uint
 
 def assert_bounds(n0, minimum, maximum):
     if not minimum <= n0 < maximum:
@@ -247,9 +247,9 @@ def func(interp, s_frame, receiver, argument):
 # #bitShift: -- return the shifted value
 @expose_primitive(BIT_SHIFT, unwrap_spec=[object, int])
 def func(interp, s_frame, receiver, argument):
-    # from rpython.rlib.rarithmetic import LONG_BIT
+    from rpython.rlib.rarithmetic import LONG_BIT
     # XXX: 32-bit images only!
-    LONG_BIT = 32
+    # LONG_BIT = 32
     if -LONG_BIT < argument < LONG_BIT:
         # overflow-checking done in lshift implementations
         if argument > 0:
@@ -296,20 +296,15 @@ for (code,op) in math_ops.items():
             return w_res
     make_func(op)
 
-# XXX: 32-bit only
-def ovfcheck_float_to_int(x):
-    from rpython.rlib.rfloat import isnan
-    if isnan(x):
-        raise OverflowError
-    if -2147483649.0 < x < 2147483648.0:
-        return int(x)
-    raise OverflowError
-
 @expose_primitive(FLOAT_TRUNCATED, unwrap_spec=[float])
 def func(interp, s_frame, f):
     try:
-        return interp.space.wrap_int(ovfcheck_float_to_int(f))
+        integer = rarithmetic.ovfcheck_float_to_int(f)
     except OverflowError:
+        raise PrimitiveFailedError
+    try:
+        return interp.space.wrap_int(integer) # in 64bit VMs, this may fail
+    except WrappingError:
         raise PrimitiveFailedError
 
 @expose_primitive(FLOAT_TIMES_TWO_POWER, unwrap_spec=[float, int])
@@ -1043,7 +1038,7 @@ def func(interp, s_frame, w_arg):
     sec_since_epoch = r_uint(int(time.time()))
     # XXX: overflow check necessary?
     sec_since_1901 = sec_since_epoch + secs_between_1901_and_1970
-    return interp.space.wrap_uint(r_uint32(sec_since_1901))
+    return interp.space.wrap_uint(r_uint(sec_since_1901))
 
 
 #____________________________________________________________________________
@@ -1085,12 +1080,9 @@ def func(interp, s_frame, w_arg, new_value):
             raise PrimitiveFailedError
         for i in xrange(w_arg.size()):
             w_arg.setchar(i, chr(new_value))
-    elif isinstance(w_arg, model.W_WordsObject):
+    elif isinstance(w_arg, model.W_WordsObject) or isinstance(w_arg, model.W_DisplayBitmap):
         for i in xrange(w_arg.size()):
-            w_arg.setword(i, new_value)
-    elif isinstance(w_arg, model.W_DisplayBitmap):
-        for i in xrange(w_arg.size()):
-            w_arg.setword(i, r_uint32(new_value))
+            w_arg.setword(i, r_uint(new_value))
     else:
         raise PrimitiveFailedError
     return w_arg

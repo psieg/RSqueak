@@ -395,11 +395,11 @@ class W_Float(W_AbstractObjectWithIdentityHash):
         from rpython.rlib.rstruct.ieee import float_pack
         r = float_pack(self.value, 8) # C double
         if n0 == 0:
-            return space.wrap_uint(r_uint32(intmask(r >> 32)))
+            return space.wrap_positive_32bit_int(intmask(r >> 32))
         else:
             # bounds-check for primitive access is done in the primitive
             assert n0 == 1
-            return space.wrap_uint(r_uint32(intmask(r)))
+            return space.wrap_positive_32bit_int(intmask(r))
 
     def store(self, space, n0, w_obj):
         from rpython.rlib.rstruct.ieee import float_unpack, float_pack
@@ -974,7 +974,7 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
 
 class W_DisplayBitmap(W_AbstractObjectWithClassReference):
     _attrs_ = ['pixelbuffer', '_realsize', '_real_depth_buffer', 'display', '_depth']
-    _immutable_fields_ = ['_realsize', 'display', '_depth']
+    _immutable_fields_ = ['_realsize', 'display', '_depth', '_real_depth_buffer']
 
     @staticmethod
     def create(space, w_class, size, depth, display):
@@ -989,7 +989,6 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def __init__(self, space, w_class, size, depth, display):
         W_AbstractObjectWithClassReference.__init__(self, space, w_class)
-        # self._real_depth_buffer = lltype.malloc(rffi.CArray(rffi.UINT), size, flavor='raw')
         self._real_depth_buffer = [r_uint(0)] * size
         self.pixelbuffer = display.get_pixelbuffer()
         self._realsize = size
