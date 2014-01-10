@@ -174,7 +174,7 @@ class W_SmallInteger(W_Object):
         upperbound = intmask(r_uint(-1) >> shift)
         if 0 <= self.value <= upperbound:
             shifted = intmask(self.value << shift)
-            return space.wrap_positive_32bit_int(shifted)
+            return space.wrap_positive_1word_int(shifted)
         else:
             try:
                 shifted = ovfcheck(self.value << shift)
@@ -280,7 +280,7 @@ class W_LargePositiveInteger1Word(W_AbstractObjectWithIdentityHash):
         upperbound = intmask(r_uint(-1) >> shift)
         if 0 <= self.value <= upperbound:
             shifted = intmask(self.value << shift)
-            return space.wrap_positive_32bit_int(shifted)
+            return space.wrap_positive_1word_int(shifted)
         else:
             raise error.PrimitiveFailedError()
 
@@ -395,11 +395,11 @@ class W_Float(W_AbstractObjectWithIdentityHash):
         from rpython.rlib.rstruct.ieee import float_pack
         r = float_pack(self.value, 8) # C double
         if n0 == 0:
-            return space.wrap_positive_32bit_int(intmask(r >> 32))
+            return space.wrap_positive_1word_int(intmask(r >> 32))
         else:
             # bounds-check for primitive access is done in the primitive
             assert n0 == 1
-            return space.wrap_positive_32bit_int(intmask(r))
+            return space.wrap_positive_1word_int(intmask(r))
 
     def store(self, space, n0, w_obj):
         from rpython.rlib.rstruct.ieee import float_unpack, float_pack

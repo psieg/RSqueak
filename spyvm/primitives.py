@@ -49,7 +49,7 @@ prim_table_implemented_only = []
 # converted to an index0
 index1_0 = object()
 char = object()
-pos_32bit_int = object()
+pos_1word_int = object()
 
 def expose_primitive(code, unwrap_spec=None, no_result=False,
                     result_is_new_frame=False, may_context_switch=True,
@@ -121,8 +121,8 @@ def wrap_primitive(unwrap_spec=None, no_result=False,
                     w_arg = s_frame.peek(index)
                     if spec is int:
                         args += (interp.space.unwrap_int(w_arg), )
-                    elif spec is pos_32bit_int:
-                        args += (interp.space.unwrap_positive_32bit_int(w_arg),)
+                    elif spec is pos_1word_int:
+                        args += (interp.space.unwrap_positive_1word_int(w_arg),)
                     elif spec is index1_0:
                         args += (interp.space.unwrap_int(w_arg)-1, )
                     elif spec is float:
@@ -204,10 +204,10 @@ bitwise_binary_ops = {
     }
 for (code,op) in bitwise_binary_ops.items():
     def make_func(op):
-        @expose_primitive(code, unwrap_spec=[pos_32bit_int, pos_32bit_int])
+        @expose_primitive(code, unwrap_spec=[pos_1word_int, pos_1word_int])
         def func(interp, s_frame, receiver, argument):
             res = op(receiver, argument)
-            return interp.space.wrap_positive_32bit_int(rarithmetic.intmask(res))
+            return interp.space.wrap_int(rarithmetic.intmask(res))
     make_func(op)
 
 # #/ -- return the result of a division, only succeed if the division is exact
@@ -248,8 +248,6 @@ def func(interp, s_frame, receiver, argument):
 @expose_primitive(BIT_SHIFT, unwrap_spec=[object, int])
 def func(interp, s_frame, receiver, argument):
     from rpython.rlib.rarithmetic import LONG_BIT
-    # XXX: 32-bit images only!
-    # LONG_BIT = 32
     if -LONG_BIT < argument < LONG_BIT:
         # overflow-checking done in lshift implementations
         if argument > 0:
@@ -1072,7 +1070,7 @@ def func(interp, s_frame, w_receiver, n0, w_value):
         raise PrimitiveFailedError
     return w_receiver.short_atput0(interp.space, n0, w_value)
 
-@expose_primitive(FILL, unwrap_spec=[object, pos_32bit_int])
+@expose_primitive(FILL, unwrap_spec=[object, pos_1word_int])
 def func(interp, s_frame, w_arg, new_value):
     space = interp.space
     if isinstance(w_arg, model.W_BytesObject):

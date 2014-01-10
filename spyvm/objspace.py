@@ -216,14 +216,14 @@ class ObjSpace(object):
             raise WrappingError("negative integer")
         if val >= 0:
             try:
-                return self.wrap_positive_32bit_int(intmask(val))
+                return self.wrap_positive_1word_int(intmask(val))
             except WrappingError:
                 pass
         # XXX this code sucks
         import math
         bytes_len = int(math.log(val) / math.log(0xff)) + 1
         if bytes_len <= 4:
-            return self.wrap_positive_32bit_int(intmask(val))
+            return self.wrap_positive_1word_int(intmask(val))
         else:
             return self._wrap_uint_loop(val, bytes_len)
 
@@ -235,9 +235,9 @@ class ObjSpace(object):
             w_result.setchar(i, chr(intmask((val >> i*8) & 255)))
         return w_result
 
-    def wrap_positive_32bit_int(self, val):
+    def wrap_positive_1word_int(self, val):
         # This will always return a positive value.
-        # XXX: For now, we assume that val is at most 32bit, i.e. overflows are
+        # XXX: For now, we assume that val is at most 1word, i.e. overflows are
         # checked for before wrapping.
         if int_between(0, val, constants.TAGGED_MAXINT + 1):
             return model.W_SmallInteger(val)
@@ -280,13 +280,13 @@ class ObjSpace(object):
             if w_value.value >= 0:
                 return intmask(w_value.value)
             else:
-                raise UnwrappingError("The value is negative when interpreted as 32bit value.")
+                raise UnwrappingError("The value is negative when interpreted as 1 word value.")
         raise UnwrappingError("expected a W_SmallInteger or W_LargePositiveInteger1Word, got %s" % (w_value,))
 
     def unwrap_uint(self, w_value):
         return w_value.unwrap_uint(self)
 
-    def unwrap_positive_32bit_int(self, w_value):
+    def unwrap_positive_1word_int(self, w_value):
         if isinstance(w_value, model.W_SmallInteger):
             if w_value.value >= 0:
                 return r_uint(w_value.value)
