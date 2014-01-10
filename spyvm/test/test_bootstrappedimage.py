@@ -13,7 +13,7 @@ def find_symbol_in_methoddict_of(string, s_class):
     s_methoddict.sync_cache()
     methoddict_w = s_methoddict.methoddict
     for each in methoddict_w.keys():
-        if each.as_string() == string:
+        if each == string:
             return each
 
 def initialize_class(w_class):

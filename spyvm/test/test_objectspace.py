@@ -40,7 +40,7 @@ def test_ruint():
     => 27670116110564327424
     """
 
-    from rpython.rlib.rarithmetic import r_uint
+    from rpython.rlib.rarithmetic import r_uint32 as r_uint
     for num in [0, 1, 41, 100, 2**31, sys.maxint + 1, -1]:
         num = r_uint(num)
         assert space.unwrap_uint(space.wrap_uint(num)) == num

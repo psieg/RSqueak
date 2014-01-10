@@ -4,7 +4,8 @@ import socket
 from spyvm import model, shadow
 from spyvm.shadow import MethodNotFound
 from spyvm import objspace, error, display
-from rpython.rlib.rarithmetic import intmask, r_uint
+from rpython.rlib.rarithmetic import intmask, r_uint32 as r_uint
+
 
 mockclass = objspace.bootstrap_class
 
@@ -376,20 +377,6 @@ def test_display_bitmap():
     for i in xrange(24, 32):
         assert target.pixelbuffer[i] == 0xffffffff
 
-def test_display_offset_computation():
-
-    def get_pixelbuffer(self):
-        from rpython.rtyper.lltypesystem import lltype, rffi
-        return lltype.malloc(rffi.ULONGP.TO, self.width * self.height * 32, flavor='raw')
-    display.SDLDisplay.get_pixelbuffer = get_pixelbuffer
-    d = display.SDLDisplay("test")
-    d.set_video_mode(18, 5, 1)
-
-    dbitmap = model.W_DisplayBitmap.create(space, space.w_Array, 5, 1, d)
-
-    assert dbitmap.compute_pos_and_line_end(0, 1) == (0, 18)
-    assert dbitmap.compute_pos_and_line_end(1, 1) == (18, 36)
-    assert dbitmap.size() == 5
 
 @py.test.mark.skipif("socket.gethostname() == 'precise32'")
 def test_weak_pointers():

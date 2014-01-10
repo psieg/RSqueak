@@ -9,6 +9,7 @@ from spyvm.error import PrimitiveFailedError, \
 from spyvm import wrapper
 
 from rpython.rlib import rarithmetic, rfloat, unroll, jit
+from rpython.rlib.rarithmetic import r_uint32, r_uint
 
 def assert_bounds(n0, minimum, maximum):
     if not minimum <= n0 < maximum:
@@ -246,7 +247,9 @@ def func(interp, s_frame, receiver, argument):
 # #bitShift: -- return the shifted value
 @expose_primitive(BIT_SHIFT, unwrap_spec=[object, int])
 def func(interp, s_frame, receiver, argument):
-    from rpython.rlib.rarithmetic import LONG_BIT
+    # from rpython.rlib.rarithmetic import LONG_BIT
+    # XXX: 32-bit images only!
+    LONG_BIT = 32
     if -LONG_BIT < argument < LONG_BIT:
         # overflow-checking done in lshift implementations
         if argument > 0:
@@ -293,10 +296,19 @@ for (code,op) in math_ops.items():
             return w_res
     make_func(op)
 
+# XXX: 32-bit only
+def ovfcheck_float_to_int(x):
+    from rpython.rlib.rfloat import isnan
+    if isnan(x):
+        raise OverflowError
+    if -2147483649.0 < x < 2147483648.0:
+        return int(x)
+    raise OverflowError
+
 @expose_primitive(FLOAT_TRUNCATED, unwrap_spec=[float])
 def func(interp, s_frame, f):
     try:
-        return interp.space.wrap_int(rarithmetic.ovfcheck_float_to_int(f))
+        return interp.space.wrap_int(ovfcheck_float_to_int(f))
     except OverflowError:
         raise PrimitiveFailedError
 
@@ -883,7 +895,7 @@ def func(interp, s_frame, argcount, s_method):
         from spyvm.plugins.vmdebugging import DebuggingPlugin
         return DebuggingPlugin.call(signature[1], interp, s_frame, argcount, s_method)
     else:
-        from spyvm.interpreter_proxy import IProxy
+        from spyvm.iproxy import IProxy
         return IProxy.call(signature, interp, s_frame, argcount, s_method)
     raise PrimitiveFailedError
 
@@ -1023,15 +1035,15 @@ def func(interp, s_frame, w_delay, w_semaphore, timestamp):
 
 
 
-secs_between_1901_and_1970 = rarithmetic.r_uint((69 * 365 + 17) * 24 * 3600)
+secs_between_1901_and_1970 = r_uint((69 * 365 + 17) * 24 * 3600)
 
 @expose_primitive(SECONDS_CLOCK, unwrap_spec=[object])
 def func(interp, s_frame, w_arg):
     import time
-    sec_since_epoch = rarithmetic.r_uint(time.time())
+    sec_since_epoch = r_uint(int(time.time()))
     # XXX: overflow check necessary?
     sec_since_1901 = sec_since_epoch + secs_between_1901_and_1970
-    return interp.space.wrap_uint(sec_since_1901)
+    return interp.space.wrap_uint(r_uint32(sec_since_1901))
 
 
 #____________________________________________________________________________
@@ -1073,9 +1085,12 @@ def func(interp, s_frame, w_arg, new_value):
             raise PrimitiveFailedError
         for i in xrange(w_arg.size()):
             w_arg.setchar(i, chr(new_value))
-    elif isinstance(w_arg, model.W_WordsObject) or isinstance(w_arg, model.W_DisplayBitmap):
+    elif isinstance(w_arg, model.W_WordsObject):
         for i in xrange(w_arg.size()):
             w_arg.setword(i, new_value)
+    elif isinstance(w_arg, model.W_DisplayBitmap):
+        for i in xrange(w_arg.size()):
+            w_arg.setword(i, r_uint32(new_value))
     else:
         raise PrimitiveFailedError
     return w_arg

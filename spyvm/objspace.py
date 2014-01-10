@@ -1,10 +1,11 @@
 import os
 
-from spyvm import constants, model, shadow, wrapper
+from spyvm import constants, model, shadow, wrapper, system
 from spyvm.error import UnwrappingError, WrappingError, PrimitiveFailedError
 from rpython.rlib import jit, rpath
 from rpython.rlib.objectmodel import instantiate, specialize
-from rpython.rlib.rarithmetic import intmask, r_uint, int_between
+from rpython.rlib.rarithmetic import intmask, int_between, r_uint
+
 
 class ObjSpace(object):
     def __init__(self):
@@ -15,7 +16,7 @@ class ObjSpace(object):
         self.make_bootstrap_objects()
 
     def find_executable(self, executable):
-        if os.sep in executable or (os.name == "nt" and ":" in executable):
+        if os.sep in executable or (system.IS_WINDOWS and ":" in executable):
             return executable
         path = os.environ.get("PATH")
         if path:
@@ -226,6 +227,7 @@ class ObjSpace(object):
         else:
             return self._wrap_uint_loop(val, bytes_len)
 
+    @jit.unroll_safe
     def _wrap_uint_loop(self, val, bytes_len):
         w_result = model.W_BytesObject(self,
                     self.classtable['w_LargePositiveInteger'], bytes_len)

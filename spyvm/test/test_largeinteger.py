@@ -6,7 +6,8 @@ from spyvm.test import test_miniimage as tools
 from spyvm.test.test_miniimage import perform, w
 from spyvm.test.test_primitives import MockFrame
 
-from rpython.rlib.rarithmetic import intmask, r_uint
+from rpython.rlib.rarithmetic import intmask, r_uint32 as r_uint
+
 
 space, interp = tools.setup_module(tools, filename='bootstrapped.image')
 
@@ -16,11 +17,11 @@ def find_symbol_in_methoddict_of(string, s_class):
     s_methoddict.sync_cache()
     methoddict_w = s_methoddict.methoddict
     for each in methoddict_w.keys():
-        if each.as_string() == string:
+        if each == string:
             return each
 
 def initialize_class(w_class):
-    initialize_symbol = find_symbol_in_methoddict_of("initialize", 
+    initialize_symbol = find_symbol_in_methoddict_of("initialize",
                         w_class.shadow_of_my_class(tools.space))
     perform(w_class, initialize_symbol)
 
@@ -78,7 +79,7 @@ def test_bitOr():
 
 def test_bitXor():
     do_primitive("bitXor:", operator.xor)
-    do_primitive("bitXor:", operator.xor, i=[0xFFFFFFFF, 0x0F0F0F0F, 0xFFFFFF], 
+    do_primitive("bitXor:", operator.xor, i=[0xFFFFFFFF, 0x0F0F0F0F, 0xFFFFFF],
                                           j=[0xF0F0F0F0, 0xFFFEFCF8, 4294967295])
 
 def test_bitShift():
@@ -97,4 +98,3 @@ def test_bitShift():
 #     do_primitive("-", operator.sub, j=[0xFF, 0xFFFF, 0xF0E0D0C0], i=[-1, -1, -1])
 #     do_primitive("-", operator.sub)
     # do_primitive("-", operator.sub, i=[0xFF], j=0x3FFFFFFF)
-

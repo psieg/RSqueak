@@ -380,11 +380,11 @@ class SqueakImage(object):
 
     def run_spy_hacks(self, space):
         pass
-        # w_display = space.objtable["w_display"]
-        # if w_display is not None and w_display is not space.w_nil:
-        #     if space.unwrap_int(w_display.fetch(space, 3)) < 8:
-        #         # non-native indexed color depth not well supported
-        #         w_display.store(space, 3, space.wrap_int(8))
+        w_display = space.objtable["w_display"]
+        if w_display is not None and w_display is not space.w_nil:
+            if space.unwrap_int(w_display.fetch(space, 3)) < 8:
+                # non-native indexed color depth not well supported
+                w_display.store(space, 3, space.wrap_int(32))
 
     def find_symbol(self, space, reader, symbol):
         w_dnu = self.special(constants.SO_DOES_NOT_UNDERSTAND)
@@ -558,7 +558,7 @@ class GenericObject(object):
         return bytes[:stop] # omit odd bytes
 
     def get_ruints(self, required_len=-1):
-        from rpython.rlib.rarithmetic import r_uint
+        from rpython.rlib.rarithmetic import r_uint32 as r_uint
         words = [r_uint(x) for x in self.chunk.data]
         if required_len != -1 and len(words) != required_len:
             raise CorruptImageError("Expected %d words, got %d" % (required_len, len(words)))

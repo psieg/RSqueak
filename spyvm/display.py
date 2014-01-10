@@ -1,4 +1,4 @@
-from rpython.rlib.rarithmetic import r_uint
+from rpython.rlib.rarithmetic import r_uint32 as r_uint
 from rpython.rtyper.lltypesystem import lltype, rffi
 from rpython.rlib.runicode import unicode_encode_utf_8
 from rpython.rlib import jit
@@ -71,7 +71,7 @@ class SDLDisplay(object):
             self.set_squeak_colormap(self.screen)
 
     def get_pixelbuffer(self):
-        return rffi.cast(rffi.ULONGP, self.screen.c_pixels)
+        return rffi.cast(rffi.UINTP, self.screen.c_pixels)
 
     def defer_updates(self, flag):
         self._defer_updates = flag

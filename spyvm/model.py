@@ -18,7 +18,7 @@ import sys, weakref
 from spyvm import constants, error
 
 from rpython.rlib import rrandom, objectmodel, jit, signature
-from rpython.rlib.rarithmetic import intmask, r_uint
+from rpython.rlib.rarithmetic import intmask, r_uint32, r_uint
 from rpython.tool.pairtype import extendabletype
 from rpython.rlib.objectmodel import instantiate, compute_hash
 from rpython.rtyper.lltypesystem import lltype, rffi
@@ -187,7 +187,6 @@ class W_SmallInteger(W_Object):
         return space.wrap_int(self.value >> shift)
 
     def unwrap_uint(self, space):
-        from rpython.rlib.rarithmetic import r_uint
         val = self.value
         if val < 0:
             raise error.UnwrappingError("got negative integer")
@@ -295,7 +294,6 @@ class W_LargePositiveInteger1Word(W_AbstractObjectWithIdentityHash):
         return space.wrap_int((self.value >> shift) & mask)
 
     def unwrap_uint(self, space):
-        from rpython.rlib.rarithmetic import r_uint
         return r_uint(self.value)
 
     def clone(self, space):
@@ -397,11 +395,11 @@ class W_Float(W_AbstractObjectWithIdentityHash):
         from rpython.rlib.rstruct.ieee import float_pack
         r = float_pack(self.value, 8) # C double
         if n0 == 0:
-            return space.wrap_uint(r_uint(intmask(r >> 32)))
+            return space.wrap_uint(r_uint32(intmask(r >> 32)))
         else:
             # bounds-check for primitive access is done in the primitive
             assert n0 == 1
-            return space.wrap_uint(r_uint(intmask(r)))
+            return space.wrap_uint(r_uint32(intmask(r)))
 
     def store(self, space, n0, w_obj):
         from rpython.rlib.rstruct.ieee import float_unpack, float_pack
@@ -940,7 +938,7 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         if self.words is None:
             return self.c_words
         else:
-            from spyvm.interpreter_proxy import sqIntArrayPtr
+            from spyvm.iproxy import sqIntArrayPtr
             size = self.size()
             old_words = self.words
             c_words = self.c_words = lltype.malloc(sqIntArrayPtr.TO, size, flavor='raw')
@@ -991,7 +989,8 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def __init__(self, space, w_class, size, depth, display):
         W_AbstractObjectWithClassReference.__init__(self, space, w_class)
-        self._real_depth_buffer = lltype.malloc(rffi.CArray(rffi.UINT), size, flavor='raw')
+        # self._real_depth_buffer = lltype.malloc(rffi.CArray(rffi.UINT), size, flavor='raw')
+        self._real_depth_buffer = [r_uint(0)] * size
         self.pixelbuffer = display.get_pixelbuffer()
         self._realsize = size
         self.display = display
@@ -1003,7 +1002,7 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def atput0(self, space, index0, w_value):
         word = space.unwrap_uint(w_value)
-        self.setword(index0, word)
+        self.setword(index0, r_uint(word))
 
     def flush_to_screen(self):
         self.display.flip()
@@ -1028,7 +1027,7 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        self.pixelbuffer[n] = word
+        self.pixelbuffer[n] = r_uint32(word)
 
     def is_array_object(self):
         return True
@@ -1062,17 +1061,18 @@ class W_16BitDisplayBitmap(W_DisplayBitmap):
             ((msb & mask) << 11)
         )
 
-        self.pixelbuffer[n] = r_uint(lsb | (msb << 16))
+        self.pixelbuffer[n] = r_uint32(lsb | (msb << 16))
 
 
 class W_8BitDisplayBitmap(W_DisplayBitmap):
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        self.pixelbuffer[n] = r_uint(
-            (word >> 24) |
-            ((word >> 8) & 0x0000ff00) |
-            ((word << 8) & 0x00ff0000) |
-            (word << 24)
+        nWord = r_uint(word)
+        self.pixelbuffer[n] = r_uint32(
+            (nWord >> 24) |
+            ((nWord >> 8) & 0x0000ff00) |
+            ((nWord << 8) & 0x00ff0000) |
+            (nWord << 24)
         )
 
 
@@ -1081,7 +1081,7 @@ class W_MappingDisplayBitmap(W_DisplayBitmap):
     @jit.unroll_safe
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        word = r_uint(word)
+        nWord = r_uint(word)
         pos = self.compute_pos(n)
         assert self._depth <= 4
         rshift = 32 - self._depth
@@ -1092,8 +1092,8 @@ class W_MappingDisplayBitmap(W_DisplayBitmap):
             for i in xrange(4):
                 pixel = r_uint(word) >> rshift
                 mapword |= (r_uint(pixel) << (i * 8))
-                word <<= self._depth
-            self.pixelbuffer[pos] = mapword
+                nWord <<= self._depth
+            self.pixelbuffer[pos] = r_uint32(mapword)
             pos += 1
 
     def compute_pos(self, n):
