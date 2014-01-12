@@ -12,4 +12,7 @@ def pytest_addoption(parser):
 
 
 def pytest_funcarg__spy(request):
-    return str(py.path.local(request.config.getvalueorskip("spy")))
+    if request.config.getvalue("spy"):
+        return str(py.path.local(request.config.getvalueorskip("spy")))
+    else:
+        return None

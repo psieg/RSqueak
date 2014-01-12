@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import sys, time
 import os
 
@@ -60,7 +61,12 @@ def _run_image(interp):
     except error.Exit, e:
         print e.msg
 
-def _run_code(interp, code, as_benchmark=False):
+
+class SelectorNotification(Exception):
+    def __init__(self, sel):
+        self.selector = sel
+
+def _run_code(interp, code, as_benchmark=False, raise_selector=False):
     import time
     selector = "codeTest%d" % int(time.time())
     try:
@@ -77,6 +83,9 @@ def _run_code(interp, code, as_benchmark=False):
     except error.Exit, e:
         print e.msg
         return 1
+
+    if raise_selector:
+        raise SelectorNotification(selector)
 
     if not as_benchmark:
         try:

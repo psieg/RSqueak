@@ -4,9 +4,15 @@ from .base import BaseJITTest
 
 
 class TestBasic(BaseJITTest):
+    def test_empty(self, spy, tmpdir):
+        traces = self.run(spy, tmpdir, """
+        ^ self
+        """)
+        assert True
+
     def test_while_loop(self, spy, tmpdir):
         traces = self.run(spy, tmpdir, """
-        0 to: 1000000000 do: [:t|nil].
+        0 to: 100 do: [:t|nil].
         """)
         self.assert_matches(traces[0].loop, """
         guard_not_invalidated(descr=<Guard0xa15ec7c>)
@@ -129,4 +135,36 @@ class TestBasic(BaseJITTest):
         i78 = int_le(i77, 0),
         guard_false(i78, descr=<Guard0x967e718>),
         jump(p0, p3, i74, p8, p10, p12, p14, p20, p22, p24, p26, p28, p30, p32, p34, p36, p38, p40, p42, p44, p46, i77, descr=TargetToken(157713840))
+        """)
+
+    def test_bitInvert32(self, spy, tmpdir):
+        traces = self.run(spy, tmpdir, """
+        | srcWord dstWord |
+        srcWord := 16rCAFFEE.
+        dstWord := 16r987654.
+        1 to: 1000000 do: [:t|
+          srcWord := srcWord bitInvert32.
+        ].
+        """)
+        self.assert_matches(traces[0].loop, """
+        guard_not_invalidated(descr=<Guard0x2b48f70>),
+        i90 = int_le(i79, 1000000),
+        guard_true(i90, descr=<Guard0x2b49590>),
+        setfield_gc(ConstPtr(ptr60), i67, descr=<FieldS spyvm.interpreter.Interpreter.inst_remaining_stack_depth 56>),
+        i91 = int_ge(i73, 0),
+        guard_true(i91, descr=<Guard0x2b49520>),
+        i92 = int_xor(i73, i72),
+        i93 = int_sub(i92, -4611686018427387904),
+        i94 = uint_lt(i93, -9223372036854775808),
+        guard_true(i94, descr=<Guard0x2b494b0>),
+        i95 = int_add(i79, 1),
+        i96 = int_sub(i95, -4611686018427387904),
+        setfield_gc(ConstPtr(ptr60), i63, descr=<FieldS spyvm.interpreter.Interpreter.inst_remaining_stack_depth 56>),
+        i97 = uint_lt(i96, -9223372036854775808),
+        guard_true(i97, descr=<Guard0x2b49440>),
+        i98 = int_sub(i87, 3),
+        setfield_gc(ConstPtr(ptr60), i98, descr=<FieldS spyvm.interpreter.Interpreter.inst_interrupt_check_counter 24>),
+        i99 = int_le(i98, 0),
+        guard_false(i99, descr=<Guard0x2b493d0>),
+        jump(p0, p3, i92, p8, i95, p16, p18, p20, p22, p24, p26, p28, p30, p32, p34, p36, p38, p40, p42, i67, i52, i72, i63, i98, descr=TargetToken(44203440))
         """)
