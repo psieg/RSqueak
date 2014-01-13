@@ -4,15 +4,9 @@ from .base import BaseJITTest
 
 
 class TestBasic(BaseJITTest):
-    def test_empty(self, spy, tmpdir):
-        traces = self.run(spy, tmpdir, """
-        ^ self
-        """)
-        assert True
-
     def test_while_loop(self, spy, tmpdir):
         traces = self.run(spy, tmpdir, """
-        0 to: 100 do: [:t|nil].
+        0 to: 10000000 do: [:t|nil].
         """)
         self.assert_matches(traces[0].loop, """
         guard_not_invalidated(descr=<Guard0xa15ec7c>)
@@ -141,7 +135,6 @@ class TestBasic(BaseJITTest):
         traces = self.run(spy, tmpdir, """
         | srcWord dstWord |
         srcWord := 16rCAFFEE.
-        dstWord := 16r987654.
         1 to: 1000000 do: [:t|
           srcWord := srcWord bitInvert32.
         ].
@@ -167,4 +160,32 @@ class TestBasic(BaseJITTest):
         i99 = int_le(i98, 0),
         guard_false(i99, descr=<Guard0x2b493d0>),
         jump(p0, p3, i92, p8, i95, p16, p18, p20, p22, p24, p26, p28, p30, p32, p34, p36, p38, p40, p42, i67, i52, i72, i63, i98, descr=TargetToken(44203440))
+        """)
+
+    def test_bitXor(self, spy, tmpdir):
+        traces = self.run(spy, tmpdir, """
+        | srcWord dstWord |
+        srcWord := 16rCAFFEE.
+        dstWord := 16r987654.
+        1 to: 1000000 do: [:t|
+          srcWord := srcWord bitXor: dstWord.
+        ].
+        """)
+        self.assert_matches(traces[0].loop, """
+        guard_not_invalidated(descr=<Guard0x28565d0>),
+        i82 = int_le(i72, 1000000),
+        guard_true(i82, descr=<Guard0x2856560>),
+        i83 = int_xor(i66, i63),
+        i84 = int_sub(i83, -4611686018427387904),
+        i85 = uint_lt(i84, -9223372036854775808),
+        guard_true(i85, descr=<Guard0x28564f0>),
+        i86 = int_add(i72, 1),
+        i87 = int_sub(i86, -4611686018427387904),
+        i88 = uint_lt(i87, -9223372036854775808),
+        guard_true(i88, descr=<Guard0x2856480>),
+        i90 = int_sub(i79, 1),
+        setfield_gc(ConstPtr(ptr57), i90, descr=<FieldS spyvm.interpreter.Interpreter.inst_interrupt_check_counter 24>),
+        i91 = int_le(i90, 0),
+        guard_false(i91, descr=<Guard0x2856410>),
+        jump(p0, p3, i83, p8, i86, p16, p18, p20, p22, p24, p26, p28, p30, p32, p34, p36, p38, p40, p42, i63, i90, descr=TargetToken(41172136))
         """)

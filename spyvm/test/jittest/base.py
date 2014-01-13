@@ -35,7 +35,6 @@ def setup():
             globals()[name] = chr(entry[0])
         else:
             globals()[name] = make_getter(entry)
-setup()
 
 
 BasePath = os.path.abspath(
@@ -77,6 +76,7 @@ class BaseJITTest(LLJitMixin):
         return traces_w
 
     def run_simulated(self, tmpdir, code):
+        setup()
         import targetimageloadingsmalltalk
 
         info = {"interpreter": None, "selector": None}
