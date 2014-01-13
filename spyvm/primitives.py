@@ -471,7 +471,9 @@ def func(interp, s_frame, w_cls):
     s_class = w_cls.as_class_get_shadow(interp.space)
     if s_class.isvariable():
         raise PrimitiveFailedError()
-    return s_class.new()
+    w_inst = s_class.new()
+    s_frame.store_instance(w_cls, w_inst)
+    return w_inst
 
 @expose_primitive(NEW_WITH_ARG, unwrap_spec=[object, int])
 def func(interp, s_frame, w_cls, size):
@@ -480,9 +482,11 @@ def func(interp, s_frame, w_cls, size):
     if not s_class.isvariable() and size != 0:
         raise PrimitiveFailedError()
     try:
-        return s_class.new(size)
+        w_inst = s_class.new(size)
     except MemoryError:
         raise PrimitiveFailedError
+    s_frame.store_instance(w_cls, w_inst)
+    return w_inst
 
 @expose_primitive(ARRAY_BECOME_ONE_WAY, unwrap_spec=[object, object])
 def func(interp, s_frame, w_obj1, w_obj2):
@@ -538,7 +542,7 @@ def get_instances_array(space, s_frame, w_class):
         match_w = []
         from rpython.rlib import rgc
 
-        if USES_STM:
+        if not USES_STM:
             roots = [gcref for gcref in rgc.get_rpy_roots() if gcref]
             pending = roots[:]
             while pending:
@@ -887,9 +891,9 @@ def func(interp, s_frame, argcount, s_method):
     elif signature[0] == "VMDebugging":
         from spyvm.plugins.vmdebugging import DebuggingPlugin
         return DebuggingPlugin.call(signature[1], interp, s_frame, argcount, s_method)
-    else:
-        from spyvm.iproxy import IProxy
-        return IProxy.call(signature, interp, s_frame, argcount, s_method)
+    # else:
+    #     from spyvm.iproxy import IProxy
+    #     return IProxy.call(signature, interp, s_frame, argcount, s_method)
     raise PrimitiveFailedError
 
 @expose_primitive(COMPILED_METHOD_FLUSH_CACHE, unwrap_spec=[object])

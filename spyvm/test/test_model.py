@@ -3,8 +3,8 @@ import math
 import socket
 from spyvm import model, shadow
 from spyvm.shadow import MethodNotFound
-from spyvm import objspace, error, display
-from rpython.rlib.rarithmetic import intmask, r_uint32 as r_uint
+from spyvm import objspace, error, display, constants
+from rpython.rlib.rarithmetic import intmask, r_uint32
 
 
 mockclass = objspace.bootstrap_class
@@ -50,6 +50,7 @@ def test_bytes_object():
     assert w_bytes.getchar(0) == "\x00"
     py.test.raises(IndexError, lambda: w_bytes.getchar(20))
 
+@py.test.mark.skipif("constants.LONG_BIT == 64")
 def test_c_bytes_object():
     w_class = mockclass(space, 0, format=shadow.BYTES)
     w_bytes = w_class.as_class_get_shadow(space).new(20)
@@ -75,6 +76,7 @@ def test_word_object():
     assert w_bytes.getword(0) == 0
     py.test.raises(AssertionError, lambda: w_bytes.getword(20))
 
+@py.test.mark.skipif("constants.LONG_BIT == 64")
 def test_c_word_object():
     w_class = mockclass(space, 0, format=shadow.WORDS)
     w_bytes = w_class.as_class_get_shadow(space).new(20)
@@ -266,18 +268,25 @@ def test_word_at():
 
     b.setword(0, 3221225472)
     r = b.at0(space, 0)
-    assert isinstance(r, (model.W_BytesObject, model.W_LargePositiveInteger1Word))
-    assert r.size() == 4
+    if constants.LONG_BIT == 32:
+        assert isinstance(r, (model.W_BytesObject, model.W_LargePositiveInteger1Word))
+        assert r.size() == 4
+    else:
+        assert isinstance(r, (model.W_SmallInteger))
 
 def test_float_at():
     b = model.W_Float(64.0)
     r = b.fetch(space, 0)
-    assert isinstance(r, model.W_LargePositiveInteger1Word)
-    assert r.size() == 4
-    assert space.unwrap_int(r.at0(space, 0)) == 0
-    assert space.unwrap_int(r.at0(space, 1)) == 0
-    assert space.unwrap_int(r.at0(space, 2)) == 80
-    assert space.unwrap_int(r.at0(space, 3)) == 64
+    assert isinstance(r, model.W_LargePositiveInteger1Word) or (isinstance(r, model.W_SmallInteger) and r.value > 0)
+    if not isinstance(r, model.W_SmallInteger):
+        assert False
+        assert r.size() == 4
+        assert space.unwrap_int(r.at0(space, 0)) == 0
+        assert space.unwrap_int(r.at0(space, 1)) == 0
+        assert space.unwrap_int(r.at0(space, 2)) == 80
+        assert space.unwrap_int(r.at0(space, 3)) == 64
+    else:
+        assert r.value == ((64 << 24) + (80 << 16))
     r = b.fetch(space, 1)
     assert isinstance(r, model.W_SmallInteger)
     assert r.value == 0
@@ -313,7 +322,7 @@ def test_large_positive_integer_1word_at_put():
     for i in range(4):
         target.atput0(space, i, source.at0(space, i))
         assert target.at0(space, i) == source.at0(space, i)
-    assert hex(r_uint(target.value)) == hex(r_uint(source.value))
+    assert hex(r_uint32(target.value)) == hex(r_uint32(source.value))
 
 def test_BytesObject_short_at():
     target = model.W_BytesObject(space, None, 4)
@@ -335,8 +344,8 @@ def test_BytesObject_short_atput():
 
 def test_WordsObject_short_at():
     target = model.W_WordsObject(space, None, 2)
-    target.setword(0, r_uint(0x00018000))
-    target.setword(1, r_uint(0x80010111))
+    target.setword(0, r_uint32(0x00018000))
+    target.setword(1, r_uint32(0x80010111))
     assert target.short_at0(space, 0).value == intmask(0xffff8000)
     assert target.short_at0(space, 1).value == intmask(0x0001)
     assert target.short_at0(space, 2).value == intmask(0x0111)
@@ -345,7 +354,7 @@ def test_WordsObject_short_at():
 def test_WordsObject_short_atput():
     target = model.W_WordsObject(space, None, 2)
     target.short_atput0(space, 0, space.wrap_int(0x0100))
-    target.short_atput0(space, 1, space.wrap_int(-1))
+    target.short_atput0(space, 1, space.wrap_int(intmask(0xffffffff)))
     target.short_atput0(space, 2, space.wrap_int(intmask(0xffff8000)))
     target.short_atput0(space, 3, space.wrap_int(0x7fff))
     assert target.getword(0) == 0xffff0100
@@ -356,26 +365,21 @@ def test_display_bitmap():
     # double-free bug
     def get_pixelbuffer(self):
         from rpython.rtyper.lltypesystem import lltype, rffi
-        return lltype.malloc(rffi.ULONGP.TO, self.width * self.height * 32, flavor='raw')
+        return lltype.malloc(rffi.UINTP.TO, self.width * self.height * 32, flavor='raw')
     display.SDLDisplay.get_pixelbuffer = get_pixelbuffer
     d = display.SDLDisplay("test")
     d.set_video_mode(32, 10, 1)
 
     target = model.W_DisplayBitmap.create(space, space.w_Array, 10, 1, d)
-    target.setword(0, r_uint(0xFF00))
+    target.setword(0, r_uint32(0xFF00))
     assert bin(target.getword(0)) == bin(0xFF00)
-    target.setword(0, r_uint(0x00FF00FF))
+    target.setword(0, r_uint32(0x00FF00FF))
     assert bin(target.getword(0)) == bin(0x00FF00FF)
-    target.setword(0, r_uint(0xFF00FF00))
+    target.setword(0, r_uint32(0xFF00FF00))
     assert bin(target.getword(0)) == bin(0xFF00FF00)
+    # Mapping 1-bit to 8-bit depth
     for i in xrange(8):
-        assert target.pixelbuffer[i] == 0xff000000
-    for i in xrange(8, 16):
-        assert target.pixelbuffer[i] == 0xffffffff
-    for i in xrange(16, 24):
-        assert target.pixelbuffer[i] == 0xff000000
-    for i in xrange(24, 32):
-        assert target.pixelbuffer[i] == 0xffffffff
+        assert target.pixelbuffer[i] == 0x01010101
 
 
 @py.test.mark.skipif("socket.gethostname() == 'precise32'")

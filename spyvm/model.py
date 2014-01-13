@@ -188,8 +188,9 @@ class W_SmallInteger(W_Object):
 
     def unwrap_uint(self, space):
         val = self.value
-        if val < 0:
-            raise error.UnwrappingError("got negative integer")
+        # if val < 0:
+        #     raise error.UnwrappingError("got negative integer")
+        # XXX: Assume that caller knows what he does
         return r_uint(val)
 
 
@@ -399,7 +400,7 @@ class W_Float(W_AbstractObjectWithIdentityHash):
         else:
             # bounds-check for primitive access is done in the primitive
             assert n0 == 1
-            return space.wrap_positive_1word_int(intmask(r))
+            return space.wrap_positive_1word_int(intmask(r_uint32(r)))
 
     def store(self, space, n0, w_obj):
         from rpython.rlib.rstruct.ieee import float_unpack, float_pack
@@ -756,14 +757,21 @@ class W_BytesObject(W_AbstractObjectWithClassReference):
         byte0 = ord(self.getchar(byte_index0))
         byte1 = ord(self.getchar(byte_index0 + 1)) << 8
         if byte1 & 0x8000 != 0:
-            byte1 = intmask(-65536 | byte1) # -65536 = 0xffff0000
+            byte1 = intmask(intmask(r_uint32(0xffff0000)) | intmask(r_uint32(byte1)))
         return space.wrap_int(byte1 | byte0)
 
     def short_atput0(self, space, index0, w_value):
         from rpython.rlib.rarithmetic import int_between
         i_value = space.unwrap_int(w_value)
-        if not int_between(-32768, i_value, 0x8000):
-            raise error.PrimitiveFailedError
+        if constants.LONG_BIT == 64:
+            if (not int_between(0, i_value, 0x8000) and
+                not int_between(0, i_value ^ (0xffffffff), 0x8000)):
+                raise error.PrimitiveFailedError
+        elif constants.LONG_BIT == 32:
+            if not int_between(-0x8000, i_value, 0x8000):
+                raise error.PrimitiveFailedError
+        else:
+            raise NotImplementedError
         byte_index0 = index0 * 2
         byte0 = i_value & 0xff
         byte1 = (i_value & 0xff00) >> 8
@@ -894,20 +902,27 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         else:
             short = (word >> 16) & 0xffff
         if short & 0x8000 != 0:
-            short = -65536 | short # -65536 = 0xffff0000
-        return space.wrap_int(intmask(short))
+            short = intmask(r_uint32(0xffff0000)) | short
+        return space.wrap_int(intmask(r_uint32(short)))
 
     def short_atput0(self, space, index0, w_value):
-        from rpython.rlib.rarithmetic import int_between
+        from rpython.rlib.rarithmetic import int_between, widen
         i_value = space.unwrap_int(w_value)
-        if not int_between(-32768, i_value, 0x8000):
-            raise error.PrimitiveFailedError
-        word_index0 = index0 / 2
-        word = intmask(self.getword(word_index0))
-        if index0 % 2 == 0:
-            word = (word & -65536) | (i_value & 0xffff) # -65536 = 0xffff0000
+        if constants.LONG_BIT == 64:
+            if (not int_between(0, i_value, 0x8000) and
+                not int_between(0, i_value ^ (0xffffffff), 0x8000)):
+                raise error.PrimitiveFailedError
+        elif constants.LONG_BIT == 32:
+            if not int_between(-0x8000, i_value, 0x8000):
+                raise error.PrimitiveFailedError
         else:
-            word = (i_value << 16) | (word & 0xffff)
+            raise NotImplementedError
+        word_index0 = index0 / 2
+        word = intmask(r_uint32(self.getword(word_index0)))
+        if index0 % 2 == 0:
+            word = intmask(r_uint32((word & widen(r_uint32(0xffff0000))) | (i_value & 0xffff)))
+        else:
+            word = intmask(r_uint32((i_value << 16) | (word & 0xffff)))
         value = r_uint(word)
         self.setword(word_index0, value)
 
@@ -938,10 +953,10 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         if self.words is None:
             return self.c_words
         else:
-            from spyvm.iproxy import sqIntArrayPtr
+            from spyvm.iproxy import IProxy
             size = self.size()
             old_words = self.words
-            c_words = self.c_words = lltype.malloc(sqIntArrayPtr.TO, size, flavor='raw')
+            c_words = self.c_words = lltype.malloc(IProxy.sqIntArrayPtr.TO, size, flavor='raw')
             for i in range(size):
                 c_words[i] = intmask(old_words[i])
             self.words = None

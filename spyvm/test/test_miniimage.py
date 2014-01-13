@@ -343,21 +343,28 @@ def test_existing_large_positive_integer_as_W_LargePositiveInteger1Word():
 
 def test_large_positive_integer_operations():
     w_result = perform(interp.space.w_SmallInteger, "maxVal")
-    w_result = perform(w_result, "+", space.wrap_int(42))
+    w_result = perform(w_result, "+", space.wrap_int(2 * interp.space.unwrap_int(w_result)))
     assert w_result is not None
-    assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+    if constants.LONG_BIT == 32:
+        assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+    else:
+        assert isinstance(w_result, model.W_SmallInteger)
 
     w_result = perform(interp.space.w_SmallInteger, "maxVal")
     w_result = perform(w_result, "*", w_result)
     assert w_result is not None
-    assert isinstance(w_result, model.W_BytesObject)
+    if constants.LONG_BIT == 32:
+        assert isinstance(w_result, model.W_BytesObject)
+    else:
+        assert isinstance(w_result, model.W_SmallInteger)
 
 def test_compiling_large_positive_integer():
-    sourcecode = """aLargeInteger
+    if constants.LONG_BIT == 32:
+        sourcecode = """aLargeInteger
                         ^ 16rFFFFFFFF"""
-    perform(w(10).getclass(space), "compile:classified:notifying:", w(sourcecode), w('pypy'), w(None))
-    w_result = perform(w(10), "aLargeInteger")
-    assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+        perform(w(10).getclass(space), "compile:classified:notifying:", w(sourcecode), w('pypy'), w(None))
+        w_result = perform(w(10), "aLargeInteger")
+        assert isinstance(w_result, model.W_LargePositiveInteger1Word)
 
 def test_doesNotUnderstand():
     w_dnu = interp.space.objtable["w_doesNotUnderstand"]
@@ -410,7 +417,7 @@ def test_primitive_perform_with_args():
     selectors_w = w_methoddict._shadow.methoddict.keys()
     w_sel = None
     for sel in selectors_w:
-        if sel.as_string() == 'size':
+        if sel == 'size':
             w_sel = sel
     size = prim(primitives.PERFORM_WITH_ARGS, [w_o, w_sel, []])
     assert size.value == 3

@@ -43,7 +43,6 @@ class Interpreter(object):
         self.space = space
         self.image = image
         self.image_name = image_name
-        self.startup_time = time.time()
         self.max_stack_depth = max_stack_depth
         self.remaining_stack_depth = max_stack_depth
         self._loop = False
@@ -204,7 +203,7 @@ class Interpreter(object):
     def time_now(self):
         import time
         from rpython.rlib.rarithmetic import intmask
-        return intmask(int((time.time() - self.startup_time) * 1000) & constants.TAGGED_MASK)
+        return intmask(int(time.time() * 1000) - self.image.startup_time)
 
     def padding(self, symbol=' '):
         return symbol * (self.max_stack_depth - self.remaining_stack_depth)

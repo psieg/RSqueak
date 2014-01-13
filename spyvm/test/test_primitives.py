@@ -68,7 +68,7 @@ def test_small_int_add():
     assert prim(primitives.ADD, [3,4]).value == 7
 
 def test_small_int_add_fail():
-    w_result = prim_fails(primitives.ADD, [constants.TAGGED_MAXINT, 2])
+    w_result = prim_fails(primitives.ADD, [constants.MAXINT, 2])
     # assert isinstance(w_result, model.W_LargePositiveInteger1Word)
     # assert w_result.value == constants.TAGGED_MAXINT + 2
     # prim_fails(primitives.ADD, [constants.TAGGED_MAXINT, constants.TAGGED_MAXINT * 2])
@@ -77,21 +77,21 @@ def test_small_int_minus():
     assert prim(primitives.SUBTRACT, [5,9]).value == -4
 
 def test_small_int_minus_fail():
-    prim_fails(primitives.SUBTRACT, [constants.TAGGED_MININT,1])
+    prim_fails(primitives.SUBTRACT, [constants.MININT,1])
     prim_fails(primitives.SUBTRACT,
-               [constants.TAGGED_MININT, constants.TAGGED_MAXINT])
+               [constants.MININT, constants.MAXINT])
 
 def test_small_int_multiply():
     assert prim(primitives.MULTIPLY, [6,3]).value == 18
 
 def test_small_int_multiply_overflow():
-    w_result = prim_fails(primitives.MULTIPLY, [constants.TAGGED_MAXINT, 2])
+    w_result = prim_fails(primitives.MULTIPLY, [constants.MAXINT, 2])
     #assert isinstance(w_result, model.W_LargePositiveInteger1Word)
     #assert w_result.value == constants.TAGGED_MAXINT * 2
-    prim_fails(primitives.MULTIPLY, [constants.TAGGED_MAXINT, constants.TAGGED_MAXINT])
-    prim_fails(primitives.MULTIPLY, [constants.TAGGED_MAXINT, -4])
-    prim_fails(primitives.MULTIPLY, [constants.TAGGED_MININT, constants.TAGGED_MAXINT])
-    prim_fails(primitives.MULTIPLY, [constants.TAGGED_MININT, 2])
+    prim_fails(primitives.MULTIPLY, [constants.MAXINT, constants.MAXINT])
+    prim_fails(primitives.MULTIPLY, [constants.MAXINT, -4])
+    prim_fails(primitives.MULTIPLY, [constants.MININT, constants.MAXINT])
+    prim_fails(primitives.MULTIPLY, [constants.MININT, 2])
 
 def test_small_int_divide():
     assert prim(primitives.DIVIDE, [6,3]).value == 2
@@ -176,14 +176,22 @@ def test_small_int_bit_shift_negative():
 
 def test_small_int_bit_shift_fail():
     from rpython.rlib.rarithmetic import intmask
-    prim_fails(primitives.BIT_SHIFT, [4, 32])
-    prim_fails(primitives.BIT_SHIFT, [4, 31])
-    prim_fails(primitives.BIT_SHIFT, [4, 30])
+    if constants.LONG_BIT == 32:
+        prim_fails(primitives.BIT_SHIFT, [4, 32])
+        prim_fails(primitives.BIT_SHIFT, [4, 31])
+        prim_fails(primitives.BIT_SHIFT, [4, 30])
+    else:
+        prim_fails(primitives.BIT_SHIFT, [4, 64])
+        prim_fails(primitives.BIT_SHIFT, [4, 63])
+        prim_fails(primitives.BIT_SHIFT, [4, 62])
     w_result = prim(primitives.BIT_SHIFT, [4, 29])
-    assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+    if constants.LONG_BIT == 32:
+        assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+    else:
+        assert isinstance(w_result, model.W_SmallInteger)
     assert w_result.value == intmask(4 << 29)
     w_result = prim(primitives.BIT_SHIFT, [4, 28])
-    assert isinstance(w_result, model.W_LargePositiveInteger1Word)
+    assert isinstance(w_result, model.W_SmallInteger)
     assert w_result.value == 4 << 28
 
 def test_smallint_as_float():
@@ -430,16 +438,51 @@ def test_times_two_power():
 
 def test_primitive_milliseconds_clock():
     import time
-    start = prim(primitives.MILLISECOND_CLOCK, [0]).value
+    class Image(object):
+        def __init__(self):
+            self.startup_time = int(time.time() * 1000)
+    image = Image()
+
+    interp, w_frame, argument_count = mock([0], None)
+    interp.image = image
+    prim_table[primitives.MILLISECOND_CLOCK](interp, w_frame.as_context_get_shadow(space), argument_count-1)
+    start = w_frame.as_context_get_shadow(space).pop().value
+    s_frame = w_frame.as_context_get_shadow(space)
+    assert not s_frame.stackdepth() - s_frame.tempsize() # check args are consumed
+
     time.sleep(0.3)
-    stop = prim(primitives.MILLISECOND_CLOCK, [0]).value
+    interp, w_frame, argument_count = mock([0], None)
+    interp.image = image
+    prim_table[primitives.MILLISECOND_CLOCK](interp, w_frame.as_context_get_shadow(space), argument_count-1)
+    stop = w_frame.as_context_get_shadow(space).pop().value
+    s_frame = w_frame.as_context_get_shadow(space)
+    assert not s_frame.stackdepth() - s_frame.tempsize() # check args are consumed
+
     assert start + 250 <= stop
 
 def test_signal_at_milliseconds():
     import time
-    future = prim(primitives.MILLISECOND_CLOCK, [0]).value + 400
+    class Image(object):
+        def __init__(self):
+            self.startup_time = int(time.time() * 1000)
+    image = Image()
+
+    interp, w_frame, argument_count = mock([0], None)
+    interp.image = image
+    prim_table[primitives.MILLISECOND_CLOCK](interp, w_frame.as_context_get_shadow(space), argument_count-1)
+    future = w_frame.as_context_get_shadow(space).pop().value + 400
+    s_frame = w_frame.as_context_get_shadow(space)
+    assert not s_frame.stackdepth() - s_frame.tempsize() # check args are consumed
+
     sema = space.w_Semaphore.as_class_get_shadow(space).new()
-    prim(primitives.SIGNAL_AT_MILLISECONDS, [space.w_nil, sema, future])
+
+    interp, w_frame, argument_count = mock([space.w_nil, sema, future], None)
+    interp.image = image
+    prim_table[primitives.SIGNAL_AT_MILLISECONDS](interp, w_frame.as_context_get_shadow(space), argument_count-1)
+    res = w_frame.as_context_get_shadow(space).pop()
+    s_frame = w_frame.as_context_get_shadow(space)
+    assert not s_frame.stackdepth() - s_frame.tempsize() # check args are consumed
+
     assert space.objtable["w_timerSemaphore"] is sema
 
 def test_inc_gc():
@@ -722,7 +765,7 @@ def test_primitive_be_display():
     # double-free bug
     def get_pixelbuffer(self):
         from rpython.rtyper.lltypesystem import lltype, rffi
-        return lltype.malloc(rffi.ULONGP.TO, self.width * self.height * 32, flavor='raw')
+        return lltype.malloc(rffi.UINTP.TO, self.width * self.height * 32, flavor='raw')
     display.SDLDisplay.get_pixelbuffer = get_pixelbuffer
 
     assert space.objtable["w_display"] is None
@@ -762,7 +805,7 @@ def test_primitive_force_display_update(monkeypatch):
     # double-free bug
     def get_pixelbuffer(self):
         from rpython.rtyper.lltypesystem import lltype, rffi
-        return lltype.malloc(rffi.ULONGP.TO, self.width * self.height * 32, flavor='raw')
+        return lltype.malloc(rffi.UINTP.TO, self.width * self.height * 32, flavor='raw')
     display.SDLDisplay.get_pixelbuffer = get_pixelbuffer
 
     mock_display = model.W_PointersObject(space, space.w_Point, 4)
@@ -776,7 +819,7 @@ def test_primitive_force_display_update(monkeypatch):
     class DisplayFlush(Exception):
         pass
 
-    def flush_to_screen_mock(self):
+    def flush_to_screen_mock(self, force=False):
         raise DisplayFlush
 
     try:
@@ -787,6 +830,8 @@ def test_primitive_force_display_update(monkeypatch):
         monkeypatch.undo()
 
 def test_bitblt_copy_bits(monkeypatch):
+    from spyvm.plugins import bitblt
+
     class CallCopyBitsSimulation(Exception):
         pass
     class Image():
@@ -810,7 +855,7 @@ def test_bitblt_copy_bits(monkeypatch):
 
     try:
         monkeypatch.setattr(w_frame._shadow, "_sendSelfSelector", perform_mock)
-        monkeypatch.setattr(shadow.BitBltShadow, "sync_cache", sync_cache_mock)
+        monkeypatch.setattr(bitblt.BitBltShadow, "sync_cache", sync_cache_mock)
         with py.test.raises(CallCopyBitsSimulation):
             prim_table[primitives.BITBLT_COPY_BITS](interp, w_frame.as_context_get_shadow(space), argument_count-1)
     finally:

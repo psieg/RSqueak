@@ -40,16 +40,17 @@ def test_ruint():
     => 27670116110564327424
     """
 
-    from rpython.rlib.rarithmetic import r_uint32 as r_uint
+    from rpython.rlib.rarithmetic import r_uint
     for num in [0, 1, 41, 100, 2**31, sys.maxint + 1, -1]:
         num = r_uint(num)
         assert space.unwrap_uint(space.wrap_uint(num)) == num
     for num in [-1, -100, -sys.maxint]:
         with py.test.raises(objspace.WrappingError):
             space.wrap_uint(num)
-    for obj in [space.wrap_char('a'), space.wrap_int(-1)]:
+    for obj in [space.wrap_char('a')]:
         with py.test.raises(objspace.UnwrappingError):
             space.unwrap_uint(obj)
+    assert space.unwrap_uint(space.wrap_int(-1)) == r_uint(-1)
     # byteobj = space.wrap_uint(0x100000000)
     # assert isinstance(byteobj, model.W_BytesObject)
     # byteobj.bytes.append('\x01')
@@ -65,7 +66,8 @@ def test_wrap_int():
         with py.test.raises(AssertionError):
             space.wrap_int(num)
 
-    from rpython.rlib.rarithmetic import intmask
-    for num in [0x7fffffff, intmask(0x80000000)]:
-        with py.test.raises(objspace.WrappingError):
-            space.wrap_int(num)
+    # XXX: We ignore tagging now -- not sure if this is ok
+    # from rpython.rlib.rarithmetic import intmask
+    # for num in [0x7fffffff, intmask(0x80000000)]:
+    #     with py.test.raises(objspace.WrappingError):
+    #         space.wrap_int(num)

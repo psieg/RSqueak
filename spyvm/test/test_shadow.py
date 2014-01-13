@@ -72,8 +72,8 @@ def test_methoddict():
     classshadow = w_class.as_class_get_shadow(space)
     methoddict = classshadow.s_methoddict().methoddict
     assert len(methods) == len(methoddict)
-    for w_key, value in methoddict.items():
-        assert methods[w_key.as_string()].as_compiledmethod_get_shadow(space) is value
+    for key, value in methoddict.items():
+        assert methods[key].as_compiledmethod_get_shadow(space) is value
 
 def method(tempsize=3,argsize=2, bytes="abcde"):
     w_m = model.W_CompiledMethod()
@@ -264,15 +264,15 @@ def test_updating_class_changes_subclasses():
     version = s_class.version
 
     w_method = model.W_CompiledMethod(0)
-    key = space.wrap_string('foo')
+    w_key = space.wrap_string('foo')
 
     s_md = w_parent.as_class_get_shadow(space).s_methoddict()
     s_md.sync_cache()
     w_ary = s_md._w_self._fetch(constants.METHODDICT_VALUES_INDEX)
-    s_md._w_self.atput0(space, 0, key)
+    s_md._w_self.atput0(space, 0, w_key)
     w_ary.atput0(space, 0, w_method)
 
-    assert s_class.lookup(key) is w_method.as_compiledmethod_get_shadow(space)
+    assert s_class.lookup(w_key) is w_method.as_compiledmethod_get_shadow(space)
     assert s_class.version is not version
     assert s_class.version is w_parent.as_class_get_shadow(space).version
 

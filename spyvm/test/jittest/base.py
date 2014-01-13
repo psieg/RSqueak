@@ -55,10 +55,12 @@ class BaseJITTest(LLJitMixin):
             return self.run_simulated(tmpdir, code)
 
     def run_binary(self, spy, tmpdir, code):
+        print code
         proc = subprocess.Popen(
             [str(spy), "-r", code, BenchmarkImage],
             cwd=str(tmpdir),
-            env={"PYPYLOG": "jit-log-opt:%s" % tmpdir.join("x.pypylog")}
+            env={"PYPYLOG": "jit-log-opt:%s" % tmpdir.join("x.pypylog"),
+                 "SDL_VIDEODRIVER": "dummy"}
         )
         proc.wait()
         data = logparser.parse_log_file(str(tmpdir.join("x.pypylog")), verbose=False)

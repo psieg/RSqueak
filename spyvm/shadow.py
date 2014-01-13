@@ -346,7 +346,7 @@ class ClassShadow(AbstractCachingShadow):
         assert not isinstance(w_selector, str)
         self.initialize_methoddict()
         s_method = w_method.as_compiledmethod_get_shadow(self.space)
-        self.s_methoddict().methoddict[w_selector] = s_method
+        self.s_methoddict().methoddict[w_selector.as_string()] = s_method
         if isinstance(w_method, model.W_CompiledMethod):
             s_method.w_compiledin = self.w_self()
 
@@ -460,18 +460,19 @@ class ContextPartShadow(AbstractRedirectingShadow):
 
     __metaclass__ = extendabletype
     _attrs_ = ['_s_sender', '_pc', '_temps_and_stack',
-            '_stack_ptr', 'instances_w']
-
+               '_stack_ptr', 'instances_w', '_stores_instances']
     _virtualizable_ = [
         "_s_sender", "_pc",
         "_temps_and_stack[*]", "_stack_ptr",
-        "_w_self", "_w_self_size"
+        "_w_self", "_w_self_size",
+        "_stores_instances"
     ]
 
     def __init__(self, space, w_self):
         self._s_sender = None
         AbstractRedirectingShadow.__init__(self, space, w_self)
         self.instances_w = {}
+        self._stores_instances = False
 
     @staticmethod
     def is_block_context(w_pointers, space):
@@ -728,13 +729,22 @@ class ContextPartShadow(AbstractRedirectingShadow):
             self._w_self_size = w_self.size()
             return w_self
 
+    def store_instance(self, w_class, w_obj):
+        if not jit.promote(self._stores_instances):
+            return
+        else:
+            instances_w = self.instances_w.get(w_class, None)
+            if instances_w is not None:
+                instances_w.append(w_obj)
+
     def store_instances_array(self, w_class, match_w):
         # used for primitives 77 & 78
+        self._stores_instances = True
         self.instances_w[w_class] = match_w
 
-    @jit.elidable
     def instances_array(self, w_class):
-        return self.instances_w.get(w_class, None)
+        if jit.promote(self._stores_instances):
+            return self.instances_w.get(w_class, None)
 
     # ______________________________________________________________________
     # Debugging printout

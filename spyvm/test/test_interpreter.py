@@ -431,7 +431,7 @@ def sendBytecodesTest(w_class, w_object, bytecodes):
         assert s_active_context.w_sender() == w_frame
         assert s_active_context.stack() == []
         assert w_active_context.as_methodcontext_get_shadow(space).w_receiver().is_same_object(w_object)
-        assert w_active_context.as_methodcontext_get_shadow(space).w_method().is_same_object(shadow.s_methoddict().methoddict[w_foo].w_self())
+        assert w_active_context.as_methodcontext_get_shadow(space).w_method().is_same_object(shadow.s_methoddict().methoddict[w_foo.as_string()].w_self())
         assert s_frame.stack() == []
         step_in_interp(s_active_context)
         w_active_context = step_in_interp(s_active_context)
@@ -602,7 +602,7 @@ def test_callPrimitiveAndPush_fallback():
     s_frame.push(space.w_one)
     w_active_context = step_in_interp(s_frame)
     s_active_context = w_active_context.as_context_get_shadow(space)
-    assert w_active_context.as_methodcontext_get_shadow(space).s_method() == shadow.s_methoddict().methoddict[w_symbol]
+    assert w_active_context.as_methodcontext_get_shadow(space).s_method() == shadow.s_methoddict().methoddict[w_symbol.as_string()]
     assert s_active_context.w_receiver() is w_object
     assert w_active_context.as_methodcontext_get_shadow(space).gettemp(0).is_same_object(space.w_one)
     assert s_active_context.stack() == []
@@ -662,7 +662,7 @@ def test_singleExtendedSuperBytecode(bytecode=singleExtendedSuperBytecode + chr(
         assert s_active_context.w_sender() == w_caller_context
         assert s_active_context.stack() == []
         assert w_active_context.as_methodcontext_get_shadow(space).w_receiver() == w_object
-        meth = w_specificclass.as_class_get_shadow(space).s_methoddict().methoddict[foo]
+        meth = w_specificclass.as_class_get_shadow(space).s_methoddict().methoddict[foo.as_string()]
         assert s_active_context.w_method() == meth.w_self()
         assert s_caller_context.stack() == []
 
