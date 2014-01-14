@@ -40,10 +40,7 @@ def perform_primitive(rcvr, w_selector, *args):
     return s_frame.pop()
 
 def w_l(largeInteger):
-    if largeInteger >= 0 and largeInteger <= constants.TAGGED_MAXINT:
-        return space.wrap_int(intmask(largeInteger))
-    else:
-        return model.W_LargePositiveInteger1Word(intmask(largeInteger))
+    return model.W_LargePositiveInteger1Word(intmask(largeInteger))
 
 # test that using W_LargePositiveInteger1Word yields the correct results.
 # we use this way of testing to have multiple different test which may fail
@@ -53,7 +50,7 @@ def do_primitive(selector, operation, i=None, j=None, trace=False):
     try:
         w_selector = space.get_special_selector(selector)
     except Exception:
-        w_selector = find_symbol_in_methoddict_of(selector, w(intmask(candidates[0])).getclass(space)._shadow)
+        w_selector = find_symbol_in_methoddict_of(selector, w_l(intmask(candidates[0])).getclass(space)._shadow)
 
     interp.trace=trace
     for i, v in enumerate(candidates):

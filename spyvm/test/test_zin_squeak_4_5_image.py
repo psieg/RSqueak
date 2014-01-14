@@ -16,8 +16,8 @@ def find_symbol_in_methoddict_of(string, s_class):
     s_methoddict.sync_cache()
     methoddict_w = s_methoddict.methoddict
     for each in methoddict_w.keys():
-        if each.as_string() == string:
-            return each
+        if each == string:
+            return w(each)
 
 def test_all_pointers_are_valid():
     tools.test_all_pointers_are_valid()

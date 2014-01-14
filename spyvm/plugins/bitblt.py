@@ -329,7 +329,7 @@ class BitBltShadow(AbstractCachingShadow):
             dstShiftInc = -dstShiftInc
             dstShiftLeft = 32 - self.dest.depth
 
-        for i in range(self.bbH):
+        for i in range(self.bbH + 1):
             if self.halftone:
                 halftoneWord = r_uint(self.halftone[(self.dy + i) % len(self.halftone)])
             else:
@@ -355,7 +355,7 @@ class BitBltShadow(AbstractCachingShadow):
                     self.dest.w_bits.setword(self.destIndex, destWord)
 
                 self.destIndex += 1
-                if (self.nWords == 2): # is the next word the last word?
+                if (word + 2 == self.nWords): # is the next word the last word?
                     self.destMask = self.mask2
                     nPix = endBits
                 else: # use fullword mask for inner loop
@@ -438,7 +438,7 @@ class BitBltShadow(AbstractCachingShadow):
 
         # now loop over all lines
         y = self.dy
-        for i in range(1, self.bbH + 1):
+        for i in range(self.bbH + 1):
             if (halftoneHeight > 1):
                 halftoneWord = r_uint(self.halftone[y % halftoneHeight])
                 y += self.vDir

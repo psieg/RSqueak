@@ -565,6 +565,9 @@ def get_instances_array(space, s_frame, w_class):
 
 @expose_primitive(SOME_INSTANCE, unwrap_spec=[object])
 def func(interp, s_frame, w_class):
+    # XXX: finding Symbols via someInstance is broken
+    if w_class.is_same_object(interp.image.w_asSymbol.getclass(interp.space)):
+        raise PrimitiveFailedError()
     match_w = get_instances_array(interp.space, s_frame, w_class)
     try:
         return match_w[0]

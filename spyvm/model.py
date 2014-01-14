@@ -15,7 +15,7 @@ W_BlockContext and W_MethodContext classes have been replaced by functions
 that create W_PointersObjects of correct size with attached shadows.
 """
 import sys, weakref
-from spyvm import constants, error
+from spyvm import constants, error, system
 
 from rpython.rlib import rrandom, objectmodel, jit, signature
 from rpython.rlib.rarithmetic import intmask, r_uint32, r_uint
@@ -23,6 +23,13 @@ from rpython.tool.pairtype import extendabletype
 from rpython.rlib.objectmodel import instantiate, compute_hash
 from rpython.rtyper.lltypesystem import lltype, rffi
 from rsdl import RSDL, RSDL_helper
+
+if system.IS_64BIT:
+    from rpython.rlib.rarithmetic import widen
+else:
+    def widen(x):
+        return x
+
 
 class W_Object(object):
     """Root of Squeak model, abstract."""
@@ -881,8 +888,8 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         self.setword(index0, word)
 
     def getword(self, n):
-        # if n < 0:
-        #     import pdb; pdb.set_trace()
+        if self.size() <= n:
+            return r_uint(0)
         assert self.size() > n >= 0
         if self.words is not None:
             return self.words[n]
@@ -890,6 +897,8 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
             return r_uint(self.c_words[n])
 
     def setword(self, n, word):
+        if self.size() <= n:
+            return
         if self.words is not None:
             self.words[n] = r_uint(word)
         else:
@@ -906,7 +915,7 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         return space.wrap_int(intmask(r_uint32(short)))
 
     def short_atput0(self, space, index0, w_value):
-        from rpython.rlib.rarithmetic import int_between, widen
+        from rpython.rlib.rarithmetic import int_between
         i_value = space.unwrap_int(w_value)
         if constants.LONG_BIT == 64:
             if (not int_between(0, i_value, 0x8000) and
@@ -1036,10 +1045,14 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
         return w_result
 
     def getword(self, n):
+        if self.size() <= n:
+            return r_uint(0)
         assert self.size() > n >= 0
         return self._real_depth_buffer[n]
 
     def setword(self, n, word):
+        if self.size() <= n:
+            return
         self._real_depth_buffer[n] = word
         self.pixelbuffer[n] = r_uint32(word)
 
