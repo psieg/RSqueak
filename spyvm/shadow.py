@@ -692,7 +692,7 @@ class ContextPartShadow(AbstractRedirectingShadow):
     # === Sender ===
 
     def store_s_sender(self, s_sender, raiseError=True):
-        assert s_sender is jit.vref_None or isinstance(s_sender, jit.DirectVRef)
+        # assert s_sender is jit.vref_None or isinstance(s_sender, jit.DirectVRef)
         self._s_sender = s_sender
         if raiseError:
             raise error.SenderChainManipulation(self)
@@ -700,12 +700,12 @@ class ContextPartShadow(AbstractRedirectingShadow):
     def restore_s_sender(self, s_direct):
         if self._s_sender is not jit.vref_None:
             # virtual sender wasn't already cleared by e.g. mark_returned
-            self._s_sender = s_direct
+            self._s_sender = jit.non_virtual_ref(s_direct)
 
     def w_sender(self):
-        if self._s_sender is None:
+        if self._s_sender is jit.vref_None:
             return self.space.w_nil
-        return self._s_sender.w_self()
+        return self.s_sender().w_self()
 
     def s_sender(self):
         return self._s_sender()

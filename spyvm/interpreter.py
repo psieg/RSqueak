@@ -93,6 +93,7 @@ class Interpreter(object):
                 s_new_context = p.s_new_context
 
     def loop_bytecodes(self, s_context, fresh_context=False, may_context_switch=True):
+        assert isinstance(s_context, ContextPartShadow)
         if not jit.we_are_jitted() and may_context_switch:
             self.quick_check_for_interrupt(s_context)
         method = s_context.w_method()

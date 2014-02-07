@@ -15,16 +15,32 @@ W_BlockContext and W_MethodContext classes have been replaced by functions
 that create W_PointersObjects of correct size with attached shadows.
 """
 import sys, weakref
+<<<<<<< local
 from spyvm import constants, error, version, storage_statistics
 from spyvm.version import elidable_for_version, constant_for_version, constant_for_version_arg
+=======
+from spyvm import constants, error, system
+>>>>>>> other
 
 from rpython.rlib import rrandom, objectmodel, jit, signature
+<<<<<<< local
 from rpython.rlib.rarithmetic import intmask, r_uint, r_int
 from rpython.rlib.debug import make_sure_not_resized
+=======
+from rpython.rlib.rarithmetic import intmask, r_uint32, r_uint, r_int
+>>>>>>> other
 from rpython.tool.pairtype import extendabletype
 from rpython.rlib.objectmodel import instantiate, compute_hash, import_from_mixin, we_are_translated
 from rpython.rtyper.lltypesystem import lltype, rffi
 from rsdl import RSDL, RSDL_helper
+
+
+if system.IS_64BIT:
+    from rpython.rlib.rarithmetic import widen
+else:
+    def widen(x):
+        return x
+
 
 class W_Object(object):
     """Root of Squeak model, abstract."""
@@ -216,7 +232,7 @@ class W_SmallInteger(W_Object):
         return isinstance(self.value, int) and self.value < 0x8000
 
     def lshift(self, space, shift):
-        from rpython.rlib.rarithmetic import ovfcheck, intmask, r_uint
+        from rpython.rlib.rarithmetic import ovfcheck, intmask
         # shift > 0, therefore the highest bit of upperbound is not set,
         # i.e. upperbound is positive
         upperbound = intmask(r_uint(-1) >> shift)
@@ -359,7 +375,6 @@ class W_LargePositiveInteger1Word(W_AbstractObjectWithIdentityHash):
         return space.wrap_int((self.value >> shift) & mask)
 
     def unwrap_uint(self, space):
-        from rpython.rlib.rarithmetic import r_uint
         return r_uint(self.value)
 
     def clone(self, space):
@@ -469,11 +484,11 @@ class W_Float(W_AbstractObjectWithIdentityHash):
         from rpython.rlib.rstruct.ieee import float_pack
         r = float_pack(self.value, 8) # C double
         if n0 == 0:
-            return space.wrap_uint(r_uint(intmask(r >> 32)))
+            return space.wrap_uint(r_uint32(intmask(r >> 32)))
         else:
             # bounds-check for primitive access is done in the primitive
             assert n0 == 1
-            return space.wrap_uint(r_uint(intmask(r)))
+            return space.wrap_uint(r_uint32(intmask(r)))
 
     def store(self, space, n0, w_obj):
         from rpython.rlib.rstruct.ieee import float_unpack, float_pack
@@ -799,14 +814,19 @@ class W_BytesObject(W_AbstractObjectWithClassReference):
         byte0 = ord(self.getchar(byte_index0))
         byte1 = ord(self.getchar(byte_index0 + 1)) << 8
         if byte1 & 0x8000 != 0:
-            byte1 = intmask(r_uint(0xffff0000) | r_uint(byte1))
+            byte1 = intmask(widen(r_uint32(0xffff0000)) | widen(r_uint32(byte1)))
         return space.wrap_int(byte1 | byte0)
 
     def short_atput0(self, space, index0, w_value):
         from rpython.rlib.rarithmetic import int_between
         i_value = space.unwrap_int(w_value)
-        if not int_between(-0x8000, i_value, 0x8000):
-            raise error.PrimitiveFailedError
+        if constants.LONG_BIT == 64:
+            if (not int_between(0, i_value, 0x8000) and
+                not int_between(0, i_value ^ (0xffffffff), 0x8000)):
+                raise error.PrimitiveFailedError
+        else:
+            if not int_between(-0x8000, i_value, 0x8000):
+                raise error.PrimitiveFailedError
         byte_index0 = index0 * 2
         byte0 = i_value & 0xff
         byte1 = (i_value & 0xff00) >> 8
@@ -938,20 +958,25 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
         else:
             short = (word >> 16) & 0xffff
         if short & 0x8000 != 0:
-            short = r_uint(0xffff0000) | r_uint(short)
+            short = widen(r_uint32(0xffff0000)) | short
         return space.wrap_int(intmask(short))
 
     def short_atput0(self, space, index0, w_value):
         from rpython.rlib.rarithmetic import int_between
         i_value = space.unwrap_int(w_value)
-        if not int_between(-0x8000, i_value, 0x8000):
-            raise error.PrimitiveFailedError
-        word_index0 = index0 / 2
-        word = intmask(self.getword(word_index0))
-        if index0 % 2 == 0:
-            word = intmask(r_uint(word) & r_uint(0xffff0000)) | (i_value & 0xffff)
+        if constants.LONG_BIT == 64:
+            if (not int_between(0, i_value, 0x8000) and
+                not int_between(0, i_value ^ (0xffffffff), 0x8000)):
+                raise error.PrimitiveFailedError
         else:
-            word = (i_value << 16) | (word & 0xffff)
+            if not int_between(-0x8000, i_value, 0x8000):
+                raise error.PrimitiveFailedError
+        word_index0 = index0 / 2
+        word = intmask(r_uint32(self.getword(word_index0)))
+        if index0 % 2 == 0:
+            word = intmask(widen(r_uint32(word)) & widen(r_uint32(0xffff0000))) | (i_value & 0xffff)
+        else:
+            word = intmask(r_uint32((i_value << 16) | (word & 0xffff)))
         value = r_uint(word)
         self.setword(word_index0, value)
 
@@ -1020,11 +1045,16 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
 
 class W_DisplayBitmap(W_AbstractObjectWithClassReference):
     _attrs_ = ['pixelbuffer', '_realsize', '_real_depth_buffer', 'display', '_depth']
+<<<<<<< local
     _immutable_fields_ = ['_realsize', 'display', '_depth']
     repr_classname = "W_DisplayBitmap"
     
     pixelbuffer = None
     
+=======
+    _immutable_fields_ = ['_realsize', 'display', '_depth', '_real_depth_buffer']
+
+>>>>>>> other
     @staticmethod
     def create(space, w_class, size, depth, display):
         if depth < 8:
@@ -1041,7 +1071,7 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
     
     def __init__(self, space, w_class, size, depth, display):
         W_AbstractObjectWithClassReference.__init__(self, space, w_class)
-        self._real_depth_buffer = lltype.malloc(rffi.CArray(rffi.UINT), size, flavor='raw')
+        self._real_depth_buffer = [r_uint(0)] * size
         self._realsize = size
         self.display = display
         self._depth = depth
@@ -1052,7 +1082,7 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def atput0(self, space, index0, w_value):
         word = space.unwrap_uint(w_value)
-        self.setword(index0, word)
+        self.setword(index0, r_uint(word))
 
     def flush_to_screen(self):
         self.display.flip()
@@ -1077,7 +1107,7 @@ class W_DisplayBitmap(W_AbstractObjectWithClassReference):
 
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        self.display.get_pixelbuffer()[n] = word
+        self.display.get_pixelbuffer()[n] = r_uint32(word)
 
     def is_array_object(self):
         return True
@@ -1116,14 +1146,14 @@ class W_16BitDisplayBitmap(W_DisplayBitmap):
             ((msb & mask) << 11)
         )
 
-        self.display.get_pixelbuffer()[n] = r_uint(lsb | (msb << 16))
+        self.display.get_pixelbuffer()[n] = r_uint32(lsb | (msb << 16))
 
 
 class W_8BitDisplayBitmap(W_DisplayBitmap):
     repr_classname = "W_8BitDisplayBitmap"
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        self.display.get_pixelbuffer()[n] = r_uint(
+        self.display.get_pixelbuffer()[n] = r_uint32(
             (word >> 24) |
             ((word >> 8) & 0x0000ff00) |
             ((word << 8) & 0x00ff0000) |
@@ -1136,7 +1166,7 @@ class W_MappingDisplayBitmap(W_DisplayBitmap):
     @jit.unroll_safe
     def setword(self, n, word):
         self._real_depth_buffer[n] = word
-        word = r_uint(word)
+        nWord = r_uint(word)
         pos = self.compute_pos(n)
         assert self._depth <= 4
         rshift = 32 - self._depth
@@ -1145,10 +1175,10 @@ class W_MappingDisplayBitmap(W_DisplayBitmap):
                 return
             mapword = r_uint(0)
             for i in xrange(4):
-                pixel = r_uint(word) >> rshift
+                pixel = r_uint(nWord) >> rshift
                 mapword |= (r_uint(pixel) << (i * 8))
-                word <<= self._depth
-            self.display.get_pixelbuffer()[pos] = mapword
+                nWord <<= self._depth
+            self.display.get_pixelbuffer()[pos] = r_uint32(mapword)
             pos += 1
 
     def compute_pos(self, n):
