@@ -200,7 +200,6 @@ class W_SmallInteger(W_Object):
     # TODO can we tell pypy that its never larger then 31-bit?
     _attrs_ = ['value']
     __slots__ = ('value',)     # the only allowed slot here
-    _immutable_fields_ = ["value"]
     repr_classname = "W_SmallInteger"
     
     def __init__(self, value):
@@ -264,6 +263,18 @@ class W_SmallInteger(W_Object):
 
     def clone(self, space):
         return self
+        
+    def store_into_list(w_int, list_of_w_obj, index):
+        """This implements an allocation-removal optimization for Small Integers.
+        If some slot already contains a SmallInt, we simply store the new value.
+        This way, the JIT can eliminate lots of allocations of W_SmallInteger objects.
+        This must be used when storing into regular objects and also the stack/temps of contexts."""
+        # This code is duplicated in ContextPartShadow.stack_put
+        w_old = list_of_w_obj[index]
+        if isinstance(w_old, W_SmallInteger):
+            w_old.value = w_int.value
+        else:
+            list_of_w_obj[index] = W_SmallInteger(w_int.value)
 
 class W_AbstractObjectWithIdentityHash(W_Object):
     """Object with explicit hash (ie all except small

@@ -229,7 +229,11 @@ class ListStorageShadow(AbstractStorageShadow):
     def fetch(self, n0):
         return self.storage[n0]
     def store(self, n0, w_value):
-        self.storage[n0] = w_value
+        assert n0 >= 0
+        if isinstance(w_value, model.W_SmallInteger):
+            model.W_SmallInteger.store_into_list(w_value, self.storage, n0)
+        else:
+            self.storage[n0] = w_value
 
 class WeakListStorageShadow(AbstractStorageShadow):
     _attrs_ = ['storage']
@@ -835,8 +839,18 @@ class ContextPartShadow(AbstractRedirectingShadow):
     def stack_get(self, index0):
         return self._temps_and_stack[index0]
     
-    def stack_put(self, index0, w_val):
-        self._temps_and_stack[index0] = w_val
+    def stack_put(self, index0, w_value):
+        if isinstance(w_value, model.W_SmallInteger):
+            # This code is copied from W_SmallInteger.store_into_list
+            # Cannot use that method, because _temps_and_stack is virtualizable
+            # and is not allowed to be passed around.
+            w_old = self._temps_and_stack[index0]
+            if isinstance(w_old, model.W_SmallInteger):
+                w_old.value = w_value.value
+            else:
+                self._temps_and_stack[index0] = model.W_SmallInteger(w_value.value)
+        else:
+            self._temps_and_stack[index0] = w_value
     
     def stack(self):
         """NOT_RPYTHON""" # purely for testing
