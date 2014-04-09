@@ -78,12 +78,13 @@ class Interpreter(object):
         self._loop = True
         s_new_context = w_active_context.as_context_get_shadow(self.space)
         while True:
-            assert self.remaining_stack_depth == self.max_stack_depth
+            #assert self.remaining_stack_depth == self.max_stack_depth
             # Need to save s_sender, c_loop will nil this on return
             s_sender = s_new_context.s_sender()
             try:
                 s_new_context = self.c_loop(s_new_context)
             except StackOverflow, e:
+                print "Excepted StackOverflow"
                 s_new_context = e.s_context
             except Return, nlr:
                 s_new_context = s_sender
@@ -101,15 +102,15 @@ class Interpreter(object):
 
     def c_loop(self, s_context, may_context_switch=True):
         old_pc = 0
-        if not jit.we_are_jitted() and may_context_switch:
-            self.quick_check_for_interrupt(s_context)
+        #if not jit.we_are_jitted() and may_context_switch:
+        #    self.quick_check_for_interrupt(s_context)
         method = s_context.w_method()
         while True:
             pc = s_context.pc()
             if pc < old_pc:
-                if jit.we_are_jitted():
-                    self.quick_check_for_interrupt(s_context,
-                                    dec=self._get_adapted_tick_counter())
+                #if jit.we_are_jitted():
+                #    self.quick_check_for_interrupt(s_context,
+                #                    dec=self._get_adapted_tick_counter())
                 self.jit_driver.can_enter_jit(
                     pc=pc, self=self, method=method,
                     s_context=s_context)
@@ -140,14 +141,16 @@ class Interpreter(object):
         if not self._loop:
             return s_new_frame # this test is done to not loop in test,
                                # but rather step just once where wanted
-        if self.remaining_stack_depth <= 1:
-            raise StackOverflow(s_new_frame)
+        #if self.remaining_stack_depth <= 1:
+        #    print "Raising StackOverflow due to remaining_stack_depth"
+        #    raise StackOverflow(s_new_frame)
 
-        self.remaining_stack_depth -= 1
+        #self.remaining_stack_depth -= 1
         try:
             retval = self.c_loop(s_new_frame, may_context_switch)
         finally:
-            self.remaining_stack_depth += 1
+            pass
+        #    self.remaining_stack_depth += 1
         return retval
 
     def perform(self, w_receiver, selector, *arguments_w):
