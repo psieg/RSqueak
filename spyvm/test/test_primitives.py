@@ -673,7 +673,7 @@ def test_primitive_value_no_context_switch(monkeypatch):
 
     def quick_check_for_interrupt(s_frame, dec=1):
         raise Context_switched
-    def step(s_frame):
+    def step(s_frame, pc):
         raise Stepping
 
     w_frame, s_initial_context = new_frame("<never called, but used for method generation>")

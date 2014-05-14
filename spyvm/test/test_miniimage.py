@@ -372,12 +372,12 @@ def test_step_run_something():
     
     assert isinstance(s_ctx, shadow.MethodContextShadow)
     assert s_ctx.top().is_same_object(space.w_true)
-    interp.step(s_ctx)
-    interp.step(s_ctx)
+    interp.step_context(s_ctx)
+    interp.step_context(s_ctx)
     assert s_ctx.top().value == 1
-    interp.step(s_ctx)
+    interp.step_context(s_ctx)
     assert s_ctx.top().value == 2
-    interp.step(s_ctx)
+    interp.step_context(s_ctx)
     assert s_ctx.top().value == 3
 
 def test_primitive_perform_with_args():

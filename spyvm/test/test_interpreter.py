@@ -22,7 +22,7 @@ def bootstrap_class(instsize, w_superclass=None, w_metaclass=None,
 def step_in_interp(ctxt): # due to missing resets in between tests
     interp._loop = False
     try:
-        retval = interp.step(ctxt)
+        retval = interp.step_context(ctxt)
         if retval is not None:
             return retval.w_self()
     except interpreter.Return, nlr:
@@ -1013,7 +1013,7 @@ def test_stacking_interpreter():
         assert False
 
 class StackTestInterpreter(TestInterpreter):
-    def stack_frame(self, w_frame, may_interrupt=True):
+    def stack_frame(self, w_frame, may_interrupt=True, fresh_context=False):
         stack_depth = self.max_stack_depth - self.remaining_stack_depth
         for i in range(stack_depth + 1):
             assert sys._getframe(5 + i * 7).f_code.co_name == 'loop_bytecodes'

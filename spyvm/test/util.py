@@ -81,12 +81,20 @@ class TestInterpreter(interpreter.Interpreter):
         self._loop = True
         return interpreter.Interpreter.loop(self, w_active_context)
     
-    def stack_frame(self, s_new_frame, may_context_switch=True):
+    def stack_frame(self, s_new_frame, may_context_switch=True, fresh_context=False):
         if not self._loop:
+            self.s_new_frame = s_new_frame
             return s_new_frame # this test is done to not loop in test,
                                # but rather step just once where wanted
-        return interpreter.Interpreter.stack_frame(self, s_new_frame, may_context_switch)
-
+        return interpreter.Interpreter.stack_frame(self, s_new_frame,
+                                may_context_switch=may_context_switch, fresh_context=fresh_context)
+    
+    def step_context(self, s_context):
+        self.s_new_frame = None
+        new_pc = self.step(s_context, s_context.pc())
+        s_context.store_pc(new_pc)
+        return self.s_new_frame # None, if we're still in the same frame.
+    
 class BootstrappedObjSpace(objspace.ObjSpace):
     
     def bootstrap(self):

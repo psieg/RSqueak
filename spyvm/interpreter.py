@@ -77,64 +77,59 @@ class Interpreter(object):
                 s_new_context = s_sender
                 while s_new_context is not nlr.s_target_context:
                     s_sender = s_new_context.s_sender()
-                    s_new_context._activate_unwind_context(self)
+                    s_new_context._activate_unwind_context(self, s_new_context.pc())
                     s_new_context = s_sender
                 s_new_context.push(nlr.value)
             except ProcessSwitch, p:
                 if self.trace:
                     print "====== Switched process from: %s" % s_new_context.short_str()
                     print "====== to: %s " % p.s_new_context.short_str()
+                # TODO Idea: check how process switches affect performance. The tracing should not
+                # continue when the process is changed (it's probably rare to have the exact same interleaving
+                # of multiple processes). How do we make sure that a bridge is created here?
                 s_new_context = p.s_new_context
 
-    def loop_bytecodes(self, s_context, may_context_switch=True):
-        old_pc = 0
+    def loop_bytecodes(self, s_context, fresh_context=False, may_context_switch=True):
         if not jit.we_are_jitted() and may_context_switch:
             self.quick_check_for_interrupt(s_context)
         method = s_context.w_method()
-        while True:
+        if jit.promote(fresh_context):
+            pc = 0
+        else:
             pc = s_context.pc()
+        while True:
+            self.jit_driver.jit_merge_point(pc=pc, self=self, method=method, s_context=s_context)
+            old_pc = pc
+            pc = self.step(s_context, pc)
             if pc < old_pc:
                 if jit.we_are_jitted():
                     self.jitted_check_for_interrupt(s_context)
-                self.jit_driver.can_enter_jit(
-                    pc=pc, self=self, method=method,
-                    s_context=s_context)
-            old_pc = pc
-            self.jit_driver.jit_merge_point(
-                pc=pc, self=self, method=method,
-                s_context=s_context)
-            try:
-                self.step(s_context)
-            except Return, nlr:
-                if nlr.s_target_context is not s_context:
-                    s_context._activate_unwind_context(self)
-                    raise nlr
-                else:
-                    s_context.push(nlr.value)
+                self.jit_driver.can_enter_jit(pc=pc, self=self, method=method, s_context=s_context)
     
     # This is just a wrapper around loop_bytecodes that handles the remaining_stack_depth mechanism
-    def stack_frame(self, s_new_frame, may_context_switch=True):
+    def stack_frame(self, s_new_frame, may_context_switch=True, fresh_context=False):
         if self.remaining_stack_depth <= 1:
             raise StackOverflow(s_new_frame)
 
         self.remaining_stack_depth -= 1
         try:
-            self.loop_bytecodes(s_new_frame, may_context_switch)
+            self.loop_bytecodes(s_new_frame, may_context_switch=may_context_switch, fresh_context=fresh_context)
         finally:
             self.remaining_stack_depth += 1
     
-    def step(self, context):
-        bytecode = context.fetch_next_bytecode()
+    def step(self, context, pc):
+        bytecode = context.fetch_bytecode(pc)
+        pc += 1
         for entry in UNROLLING_BYTECODE_RANGES:
             if len(entry) == 2:
                 bc, methname = entry
                 if bytecode == bc:
-                    return getattr(context, methname)(self, bytecode)
+                    return getattr(context, methname)(self, bytecode, pc)
             else:
                 start, stop, methname = entry
                 if start <= bytecode <= stop:
-                    return getattr(context, methname)(self, bytecode)
-        assert 0, "unreachable"
+                    return getattr(context, methname)(self, bytecode, pc)
+        assert False, "unreachable"
     
     # ============== Methods for handling user interrupts ==============
     
@@ -241,27 +236,52 @@ class ProcessSwitch(ContextSwitchException):
 
 # This is a decorator for bytecode implementation methods.
 # parameter_bytes=N means N additional bytes are fetched as parameters.
-def bytecode_implementation(parameter_bytes=0):
+# jump=True means the pc is changed in an unpredictable way.
+#           The implementation method must additionally handle the pc.
+# needs_pc=True means the bytecode implementation required the pc, but will not change it.
+def bytecode_implementation(parameter_bytes=0, jump=False, needs_pc=False):
     def bytecode_implementation_decorator(actual_implementation_method):
         from rpython.rlib.unroll import unrolling_zero
         @jit.unroll_safe
-        def bytecode_implementation_wrapper(self, interp, current_bytecode):
+        def bytecode_implementation_wrapper(self, interp, current_bytecode, pc):
             parameters = ()
             i = unrolling_zero
             while i < parameter_bytes:
-                parameters += (self.fetch_next_bytecode(), )
+                parameters += (self.fetch_bytecode(pc), )
+                pc += 1
                 i = i + 1
+            if jump or needs_pc:
+                parameters += (pc, )
             # This is a good place to step through bytecodes.
             # import pdb; pdb.set_trace()
-            return actual_implementation_method(self, interp, current_bytecode, *parameters)
+            try:
+                jumped_pc = actual_implementation_method(self, interp, current_bytecode, *parameters)
+                if jump:
+                    return jumped_pc
+                else:
+                    return pc
+            except ContextSwitchException:
+                # We are returning to the loop() method, so the virtualized pc variable must be written to the context
+                # objects.
+                # This can be very bad for performance since it forces the jit to heap-allocate virtual objects.
+                # Bytecodes with jump=True cannot cause any Exception, so we can safely store pc (and not jumped_pc).
+                self.store_pc(pc)
+                raise
+            except Return, ret:
+                if ret.s_target_context is not self:
+                    self._activate_unwind_context(interp, pc)
+                    raise ret
+                else:
+                    self.push(ret.value)
+                    return pc
         bytecode_implementation_wrapper.func_name = actual_implementation_method.func_name
         return bytecode_implementation_wrapper
     return bytecode_implementation_decorator
 
 def make_call_primitive_bytecode(primitive, selector, argcount, store_pc=False):
     func = primitives.prim_table[primitive]
-    @bytecode_implementation()
-    def callPrimitive(self, interp, current_bytecode):
+    @bytecode_implementation(needs_pc=True)
+    def callPrimitive(self, interp, current_bytecode, pc):
         # WARNING: this is used for bytecodes for which it is safe to
         # directly call the primitive.  In general, it is not safe: for
         # example, depending on the type of the receiver, bytecodePrimAt
@@ -270,28 +290,32 @@ def make_call_primitive_bytecode(primitive, selector, argcount, store_pc=False):
         # The rule of thumb is that primitives with only int and float
         # in their unwrap_spec are safe.
         try:
-            return func(interp, self, argcount)
+            if store_pc:
+                # The pc is stored because some primitives read the pc from the frame object.
+                # Only do this selectively to avoid forcing virtual frame object to the heap.
+                self.store_pc(pc)
+            func(interp, self, argcount)
         except primitives.PrimitiveFailedError:
-            pass
-        return self._sendSelfSelectorSpecial(selector, argcount, interp)
+            self._sendSelfSelectorSpecial(interp, selector, argcount)
     callPrimitive.func_name = "callPrimitive_%s" % func.func_name
     return callPrimitive
 
 def make_call_primitive_bytecode_classbased(a_class_name, a_primitive, alternative_class_name, alternative_primitive, selector, argcount):
-    @bytecode_implementation()
-    def callClassbasedPrimitive(self, interp, current_bytecode):
+    @bytecode_implementation(needs_pc=True)
+    def callClassbasedPrimitive(self, interp, current_bytecode, pc):
         rcvr = self.peek(argcount)
         receiver_class = rcvr.getclass(self.space)
         try:
             if receiver_class is getattr(self.space, a_class_name):
                 func = primitives.prim_table[a_primitive]
-                return func(interp, self, argcount)
+                func(interp, self, argcount)
             elif receiver_class is getattr(self.space, alternative_class_name):
                 func = primitives.prim_table[alternative_primitive]
-                return func(interp, self, argcount)
+                func(interp, self, argcount)
+            else:
+                self._sendSelfSelectorSpecial(interp, selector, argcount)
         except primitives.PrimitiveFailedError:
-            pass
-        return self._sendSelfSelectorSpecial(selector, argcount, interp)
+            self._sendSelfSelectorSpecial(interp, selector, argcount)
     callClassbasedPrimitive.func_name = "callClassbasedPrimitive_%s" % selector
     return callClassbasedPrimitive
 
@@ -300,7 +324,7 @@ def make_quick_call_primitive_bytecode(primitive_index, argcount):
     func = primitives.prim_table[primitive_index]
     @bytecode_implementation()
     def quick_call_primitive_bytecode(self, interp, current_bytecode):
-        return func(interp, self, argcount)
+        func(interp, self, argcount)
     return quick_call_primitive_bytecode
 
 # This is for bytecodes that actually implement a simple message-send.
@@ -308,7 +332,7 @@ def make_quick_call_primitive_bytecode(primitive_index, argcount):
 def make_send_selector_bytecode(selector, argcount):
     @bytecode_implementation()
     def selector_bytecode(self, interp, current_bytecode):
-        return self._sendSelfSelectorSpecial(selector, argcount, interp)
+        self._sendSelfSelectorSpecial(interp, selector, argcount)
     selector_bytecode.func_name = "selector_bytecode_%s" % selector
     return selector_bytecode
 
@@ -473,8 +497,8 @@ class __extend__(ContextPartShadow):
         index_in_array, w_indirectTemps = self._extract_index_and_temps(index_in_array, index_of_array)
         w_indirectTemps.atput0(self.space, index_in_array, self.pop())
 
-    @bytecode_implementation(parameter_bytes=3)
-    def pushClosureCopyCopiedValuesBytecode(self, interp, current_bytecode, descriptor, j, i):
+    @bytecode_implementation(parameter_bytes=3, jump=True)
+    def pushClosureCopyCopiedValuesBytecode(self, interp, current_bytecode, descriptor, j, i, pc):
         """ Copied from Blogpost: http://www.mirandabanda.org/cogblog/2008/07/22/closures-part-ii-the-bytecodes/
         ContextPart>>pushClosureCopyNumCopiedValues: numCopied numArgs: numArgs blockSize: blockSize
         "Simulate the action of a 'closure copy' bytecode whose result is the
@@ -500,10 +524,10 @@ class __extend__(ContextPartShadow):
         numArgs, numCopied = splitter[4, 4](descriptor)
         blockSize = (j << 8) | i
         # Create new instance of BlockClosure
-        w_closure = space.newClosure(self.w_self(), self.pc(), numArgs,
-                                            self.pop_and_return_n(numCopied))
+        w_closure = space.newClosure(self.w_self(), pc, numArgs, self.pop_and_return_n(numCopied))
         self.push(w_closure)
-        self._jump(blockSize)
+        assert blockSize >= 0
+        return self._jump(blockSize, pc)
         
     # ====== Helpers for send/return bytecodes ======
 
@@ -543,8 +567,8 @@ class __extend__(ContextPartShadow):
 
         return interp.stack_frame(s_frame)
 
-    @objectmodel.specialize.arg(1)
-    def _sendSelfSelectorSpecial(self, selector, numargs, interp):
+    @objectmodel.specialize.arg(2)
+    def _sendSelfSelectorSpecial(self, interp, selector, numargs):
         w_selector = self.space.get_special_selector(selector)
         return self._sendSelfSelector(w_selector, numargs, interp)
     
@@ -705,7 +729,7 @@ class __extend__(ContextPartShadow):
 
     # ====== Misc ======
     
-    def _activate_unwind_context(self, interp):
+    def _activate_unwind_context(self, interp, current_pc):
         # TODO put the constant somewhere else.
         # Primitive 198 is used in BlockClosure >> ensure:
         if self.is_closure_context() or self.w_method().primitive() != 198:
@@ -716,7 +740,7 @@ class __extend__(ContextPartShadow):
             self.settemp(1, self.space.w_true) # mark unwound
             self.push(self.gettemp(0)) # push the first argument
             try:
-                self.bytecodePrimValue(interp, 0)
+                self.bytecodePrimValue(interp, 0, current_pc)
             except Return, nlr:
                 if self is not nlr.s_target_context:
                     raise nlr
@@ -733,10 +757,10 @@ class __extend__(ContextPartShadow):
 
     # ====== Jump bytecodes ======
 
-    def _jump(self, offset):
-        self.store_pc(self.pc() + offset)
+    def _jump(self, offset, pc):
+        return pc + offset
 
-    def _jumpConditional(self, interp, expecting_true, position):
+    def _jumpConditional(self, interp, expecting_true, position, pc):
         if expecting_true:
             w_expected = interp.space.w_true
             w_alternative = interp.space.w_false
@@ -747,9 +771,10 @@ class __extend__(ContextPartShadow):
         # Don't check the class, just compare with only two Boolean instances.
         w_bool = self.pop()
         if w_expected.is_same_object(w_bool):
-            self._jump(position)
+            return self._jump(position, pc)
         elif not w_alternative.is_same_object(w_bool):
             self._mustBeBoolean(interp, w_bool)
+        return pc
 
     def _shortJumpOffset(self, current_bytecode):
         return (current_bytecode & 7) + 1
@@ -757,27 +782,27 @@ class __extend__(ContextPartShadow):
     def _longJumpOffset(self, current_bytecode, parameter):
         return ((current_bytecode & 3) << 8) + parameter
 
-    @bytecode_implementation()
-    def shortUnconditionalJumpBytecode(self, interp, current_bytecode):
-        self._jump(self._shortJumpOffset(current_bytecode))
+    @bytecode_implementation(jump=True)
+    def shortUnconditionalJumpBytecode(self, interp, current_bytecode, pc):
+        return self._jump(self._shortJumpOffset(current_bytecode), pc)
 
-    @bytecode_implementation()
-    def shortConditionalJumpBytecode(self, interp, current_bytecode):
+    @bytecode_implementation(jump=True)
+    def shortConditionalJumpBytecode(self, interp, current_bytecode, pc):
         # The conditional jump is "jump on false"
-        self._jumpConditional(interp, False, self._shortJumpOffset(current_bytecode))
+        return self._jumpConditional(interp, False, self._shortJumpOffset(current_bytecode), pc)
 
-    @bytecode_implementation(parameter_bytes=1)
-    def longUnconditionalJumpBytecode(self, interp, current_bytecode, parameter):
+    @bytecode_implementation(parameter_bytes=1, jump=True)
+    def longUnconditionalJumpBytecode(self, interp, current_bytecode, parameter, pc):
         offset = (((current_bytecode & 7) - 4) << 8) + parameter
-        self._jump(offset)
+        return self._jump(offset, pc)
 
-    @bytecode_implementation(parameter_bytes=1)
-    def longJumpIfTrueBytecode(self, interp, current_bytecode, parameter):
-        self._jumpConditional(interp, True, self._longJumpOffset(current_bytecode, parameter))
+    @bytecode_implementation(parameter_bytes=1, jump=True)
+    def longJumpIfTrueBytecode(self, interp, current_bytecode, parameter, pc):
+        return self._jumpConditional(interp, True, self._longJumpOffset(current_bytecode, parameter), pc)
 
-    @bytecode_implementation(parameter_bytes=1)
-    def longJumpIfFalseBytecode(self, interp, current_bytecode, parameter):
-        self._jumpConditional(interp, False, self._longJumpOffset(current_bytecode, parameter))
+    @bytecode_implementation(parameter_bytes=1, jump=True)
+    def longJumpIfFalseBytecode(self, interp, current_bytecode, parameter, pc):
+        return self._jumpConditional(interp, False, self._longJumpOffset(current_bytecode, parameter), pc)
 
     # ====== Bytecodes implemented with primitives and message sends ======
 
@@ -808,7 +833,7 @@ class __extend__(ContextPartShadow):
     bytecodePrimEquivalent = make_quick_call_primitive_bytecode(primitives.EQUIVALENT, 1)
     bytecodePrimClass = make_quick_call_primitive_bytecode(primitives.CLASS, 0)
 
-    bytecodePrimBlockCopy = make_call_primitive_bytecode(primitives.BLOCK_COPY, "blockCopy:", 1)
+    bytecodePrimBlockCopy = make_call_primitive_bytecode(primitives.BLOCK_COPY, "blockCopy:", 1, store_pc=True)
     bytecodePrimValue = make_call_primitive_bytecode_classbased("w_BlockContext", primitives.VALUE, "w_BlockClosure", primitives.CLOSURE_VALUE, "value", 0)
     bytecodePrimValueWithArg = make_call_primitive_bytecode_classbased("w_BlockContext", primitives.VALUE, "w_BlockClosure", primitives.CLOSURE_VALUE_, "value:", 1)
 
