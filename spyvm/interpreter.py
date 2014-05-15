@@ -109,15 +109,6 @@ class Interpreter(object):
                     self.jitted_check_for_interrupt(s_context)
                 self.jit_driver.can_enter_jit(pc=pc, self=self, method=method, s_context=s_context)
     
-            try:
-                self.step(s_context)
-            except Return, nlr:
-                if nlr.s_target_context is not s_context:
-                    s_context._activate_unwind_context(self)
-                    raise nlr
-                else:
-                    s_context.push(nlr.value)
-    
     # This is just a wrapper around loop_bytecodes that handles the stack overflow protection mechanism
     def stack_frame(self, s_new_frame, may_context_switch=True, fresh_context=False):
         if self.max_stack_depth > 0:
