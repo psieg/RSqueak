@@ -26,7 +26,7 @@ class Interpreter(object):
     _immutable_fields_ = ["space", "image", "image_name",
                           "max_stack_depth", "interrupt_counter_size",
                           "startup_time", "evented", "interrupts"]
-    
+
     jit_driver = jit.JitDriver(
         greens=['pc', 'self', 'method'],
         reds=['s_context'],
@@ -38,7 +38,7 @@ class Interpreter(object):
                 trace=False, evented=True, interrupts=True,
                 max_stack_depth=constants.MAX_LOOP_DEPTH):
         import time
-        
+
         # === Initialize immutable variables
         self.space = space
         self.image = image
@@ -54,7 +54,7 @@ class Interpreter(object):
             self.interrupt_counter_size = int(os.environ["SPY_ICS"])
         except KeyError:
             self.interrupt_counter_size = constants.INTERRUPT_COUNTER_SIZE
-        
+
         # === Initialize mutable variables
         self.interrupt_check_counter = self.interrupt_counter_size
         self.current_stack_depth = 0
@@ -108,19 +108,25 @@ class Interpreter(object):
                 if jit.we_are_jitted():
                     self.jitted_check_for_interrupt(s_context)
                 self.jit_driver.can_enter_jit(pc=pc, self=self, method=method, s_context=s_context)
-    
+
     # This is just a wrapper around loop_bytecodes that handles the stack overflow protection mechanism
     def stack_frame(self, s_new_frame, may_context_switch=True, fresh_context=False):
         if self.max_stack_depth > 0:
             if self.current_stack_depth >= self.max_stack_depth:
                 raise StackOverflow(s_new_frame)
-        
+
         self.current_stack_depth += 1
+        s_sender = s_new_frame.s_sender()
+        assert s_sender
+        s_sender_ref = jit.virtual_ref(s_sender)
+        s_new_frame.store_s_sender(s_sender_ref, raiseError=False)
         try:
             self.loop_bytecodes(s_new_frame, may_context_switch=may_context_switch, fresh_context=fresh_context)
         finally:
+            jit.virtual_ref_finish(s_sender_ref, s_sender)
+            s_new_frame.restore_s_sender(s_sender)
             self.current_stack_depth -= 1
-    
+
     def step(self, context, pc):
         bytecode = context.fetch_bytecode(pc)
         pc += 1
@@ -134,9 +140,9 @@ class Interpreter(object):
                 if start <= bytecode <= stop:
                     return getattr(context, methname)(self, bytecode, pc)
         assert False, "unreachable"
-    
+
     # ============== Methods for handling user interrupts ==============
-    
+
     def jitted_check_for_interrupt(self, s_frame):
         if not self.interrupts:
             return
@@ -147,7 +153,7 @@ class Interpreter(object):
         decr_by = int(trace_length // 100)
         decr_by = max(decr_by, 1)
         self.quick_check_for_interrupt(s_frame, decr_by)
-    
+
     def quick_check_for_interrupt(self, s_frame, dec=1):
         if not self.interrupts:
             return
@@ -183,7 +189,7 @@ class Interpreter(object):
         return intmask(int((time.time() - self.startup_time) * 1000) & constants.TAGGED_MASK)
 
     # ============== Convenience methods for executing code ==============
-    
+
     def interpret_toplevel(self, w_frame):
         try:
             self.loop(w_frame)
@@ -199,7 +205,7 @@ class Interpreter(object):
                                             "asSymbol")
         else:
             w_selector = selector
-        
+
         w_method = model.W_CompiledMethod(self.space, header=512)
         w_method.literalatput0(self.space, 1, w_selector)
         assert len(arguments_w) <= 7
@@ -208,10 +214,10 @@ class Interpreter(object):
         s_frame = MethodContextShadow(self.space, None, w_method, w_receiver, [])
         s_frame.push(w_receiver)
         s_frame.push_all(list(arguments_w))
-        
+
         self.interrupt_check_counter = self.interrupt_counter_size
         return self.interpret_toplevel(s_frame.w_self())
-    
+
     def padding(self, symbol=' '):
         return symbol * self.current_stack_depth
 
@@ -247,9 +253,20 @@ class ProcessSwitch(ContextSwitchException):
 # jump=True means the pc is changed in an unpredictable way.
 #           The implementation method must additionally handle the pc.
 # needs_pc=True means the bytecode implementation required the pc, but will not change it.
+
+from rpython.rlib.unroll import SpecTag
+class unrolling_int(int, SpecTag):
+    def __add__(self, other):
+        return unrolling_int(int.__add__(self, other))
+    __radd__ = __add__
+    def __sub__(self, other):
+        return unrolling_int(int.__sub__(self, other))
+    def __rsub__(self, other):
+        return unrolling_int(int.__rsub__(self, other))
+unrolling_zero = unrolling_int(0)
+
 def bytecode_implementation(parameter_bytes=0, jump=False, needs_pc=False):
     def bytecode_implementation_decorator(actual_implementation_method):
-        from rpython.rlib.unroll import unrolling_zero
         @jit.unroll_safe
         def bytecode_implementation_wrapper(self, interp, current_bytecode, pc):
             parameters = ()
@@ -351,9 +368,9 @@ def make_send_selector_bytecode(selector, argcount):
 
 # __extend__ adds new methods to the ContextPartShadow class
 class __extend__(ContextPartShadow):
-    
+
     # ====== Push/Pop bytecodes ======
-    
+
     @bytecode_implementation()
     def pushReceiverVariableBytecode(self, interp, current_bytecode):
         index = current_bytecode & 15
@@ -432,7 +449,7 @@ class __extend__(ContextPartShadow):
     @bytecode_implementation()
     def popStackBytecode(self, interp, current_bytecode):
         self.pop()
-    
+
     @bytecode_implementation(parameter_bytes=1)
     def pushNewArrayBytecode(self, interp, current_bytecode, descriptor):
         arraySize, popIntoArray = splitter[7, 1](descriptor)
@@ -442,9 +459,9 @@ class __extend__(ContextPartShadow):
         else:
            newArray = interp.space.w_Array.as_class_get_shadow(interp.space).new(arraySize)
         self.push(newArray)
-        
+
     # ====== Extended Push/Pop bytecodes ======
-    
+
     def _extendedVariableTypeAndIndex(self, descriptor):
         return ((descriptor >> 6) & 3), (descriptor & 63)
 
@@ -480,16 +497,16 @@ class __extend__(ContextPartShadow):
     @bytecode_implementation(parameter_bytes=1)
     def extendedStoreBytecode(self, interp, current_bytecode, descriptor):
         return self._extendedStoreBytecode(interp, current_bytecode, descriptor)
-            
+
     @bytecode_implementation(parameter_bytes=1)
     def extendedStoreAndPopBytecode(self, interp, current_bytecode, descriptor):
         self._extendedStoreBytecode(interp, current_bytecode, descriptor)
         self.pop()
-    
+
     def _extract_index_and_temps(self, index_in_array, index_of_array):
         w_indirectTemps = self.gettemp(index_of_array)
         return index_in_array, w_indirectTemps
-    
+
     @bytecode_implementation(parameter_bytes=2)
     def pushRemoteTempLongBytecode(self, interp, current_bytecode, index_in_array, index_of_array):
         index_in_array, w_indirectTemps = self._extract_index_and_temps(index_in_array, index_of_array)
@@ -527,7 +544,7 @@ class __extend__(ContextPartShadow):
                                    copiedValues: copiedValues).
         self jump: blockSize
         """
-        
+
         space = self.space
         numArgs, numCopied = splitter[4, 4](descriptor)
         blockSize = (j << 8) | i
@@ -536,7 +553,7 @@ class __extend__(ContextPartShadow):
         self.push(w_closure)
         assert blockSize >= 0
         return self._jump(blockSize, pc)
-        
+
     # ====== Helpers for send/return bytecodes ======
 
     def _sendSelfSelector(self, w_selector, argcount, interp):
@@ -558,7 +575,7 @@ class __extend__(ContextPartShadow):
             w_method = receiverclassshadow.lookup(w_selector)
         except MethodNotFound:
             return self._doesNotUnderstand(w_selector, argcount, interp, receiver)
-        
+
         code = w_method.primitive()
         if code:
             try:
@@ -579,21 +596,21 @@ class __extend__(ContextPartShadow):
     def _sendSelfSelectorSpecial(self, interp, selector, numargs):
         w_selector = self.space.get_special_selector(selector)
         return self._sendSelfSelector(w_selector, numargs, interp)
-    
+
     def _sendSpecialSelector(self, interp, receiver, special_selector, w_args=[]):
         w_special_selector = self.space.objtable["w_" + special_selector]
         s_class = receiver.class_shadow(self.space)
         w_method = s_class.lookup(w_special_selector)
         s_frame = w_method.create_frame(interp.space, receiver, w_args, self)
-        
+
         # ######################################################################
         if interp.trace:
             print '%s %s %s: #%s' % (interp.padding('#'), special_selector, s_frame.short_str(), w_args)
             if not objectmodel.we_are_translated():
                 import pdb; pdb.set_trace()
-        
+
         return interp.stack_frame(s_frame)
-    
+
     def _doesNotUnderstand(self, w_selector, argcount, interp, receiver):
         arguments = self.pop_and_return_n(argcount)
         w_message_class = self.space.classtable["w_Message"]
@@ -603,7 +620,7 @@ class __extend__(ContextPartShadow):
         w_message.store(self.space, 0, w_selector)
         w_message.store(self.space, 1, self.space.wrap_list(arguments))
         self.pop() # The receiver, already known.
-        
+
         try:
             return self._sendSpecialSelector(interp, receiver, "doesNotUnderstand", [w_message])
         except MethodNotFound:
@@ -612,10 +629,10 @@ class __extend__(ContextPartShadow):
             assert isinstance(s_class, ClassShadow)
             print "Missing doesNotUnderstand in hierarchy of %s" % s_class.getname()
             raise
-    
+
     def _mustBeBoolean(self, interp, receiver):
         return self._sendSpecialSelector(interp, receiver, "mustBeBoolean")
-    
+
     def _call_primitive(self, code, interp, argcount, w_method, w_selector):
         # ##################################################################
         if interp.trace:
@@ -635,11 +652,11 @@ class __extend__(ContextPartShadow):
     def _return(self, return_value, interp, s_return_to):
         # unfortunately, this assert is not true for some tests. TODO fix this.
         # assert self._stack_ptr == self.tempsize()
-        
+
         # ##################################################################
         if interp.trace:
             print '%s<- %s' % (interp.padding(), return_value.as_repr_string())
-        
+
         if s_return_to is None:
             # This should never happen while executing a normal image.
             raise ReturnFromTopLevel(return_value)
@@ -736,7 +753,7 @@ class __extend__(ContextPartShadow):
         return self._sendSelfSelector(w_selector, argcount, interp)
 
     # ====== Misc ======
-    
+
     def _activate_unwind_context(self, interp, current_pc):
         # TODO put the constant somewhere else.
         # Primitive 198 is used in BlockClosure >> ensure:
@@ -754,11 +771,11 @@ class __extend__(ContextPartShadow):
                     raise nlr
             finally:
                 self.mark_returned()
-    
+
     @bytecode_implementation()
     def unknownBytecode(self, interp, current_bytecode):
         raise MissingBytecode("unknownBytecode")
-        
+
     @bytecode_implementation()
     def experimentalBytecode(self, interp, current_bytecode):
         raise MissingBytecode("experimentalBytecode")
@@ -775,7 +792,7 @@ class __extend__(ContextPartShadow):
         else:
             w_alternative = interp.space.w_true
             w_expected = interp.space.w_false
-        
+
         # Don't check the class, just compare with only two Boolean instances.
         w_bool = self.pop()
         if w_expected.is_same_object(w_bool):
