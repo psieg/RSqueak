@@ -4,7 +4,7 @@ import math
 import operator
 from spyvm import model, shadow, error, constants, display
 from spyvm.error import PrimitiveFailedError, PrimitiveNotYetWrittenError
-from spyvm import wrapper
+from spyvm import wrapper, gcrefs
 
 from rpython.rlib import rarithmetic, rfloat, unroll, jit, objectmodel
 
@@ -540,43 +540,25 @@ def func(interp, s_frame, w_frame, stackp):
     w_frame.store(interp.space, constants.CTXPART_STACKP_INDEX, interp.space.wrap_int(stackp))
     return w_frame
 
-
 def stm_enabled():
     """NOT RPYTHON"""
     from rpython.rlib import rgc
     return hasattr(rgc, "stm_is_enabled") and rgc.stm_is_enabled()
+
 if stm_enabled():
     def get_instances_array(space, s_frame, w_class):
         return []
 else:
     def get_instances_array(space, s_frame, w_class):
-        # This primitive returns some instance of the class on the stack.
-        # Not sure quite how to do this; maintain a weak list of all
-        # existing instances or something?
-        match_w = s_frame.instances_array(w_class)
-        if match_w is None:
-            match_w = []
-            from rpython.rlib import rgc
-
-            roots = [gcref for gcref in rgc.get_rpy_roots() if gcref]
-            pending = roots[:]
-            while pending:
-                gcref = pending.pop()
-                if not rgc.get_gcflag_extra(gcref):
-                    rgc.toggle_gcflag_extra(gcref)
-                    w_obj = rgc.try_cast_gcref_to_instance(model.W_Object, gcref)
-                    if (w_obj is not None and w_obj.has_class()
-                        and w_obj.getclass(space) is w_class):
-                        match_w.append(w_obj)
-                    pending.extend(rgc.get_rpy_referents(gcref))
-
-            while roots:
-                gcref = roots.pop()
-                if rgc.get_gcflag_extra(gcref):
-                    rgc.toggle_gcflag_extra(gcref)
-                    roots.extend(rgc.get_rpy_referents(gcref))
-            s_frame.store_instances_array(w_class, match_w)
-        return match_w
+        # TODO find a better way then always pre-collecting the entire list of objects.
+        instances = s_frame.instances_array(w_class)
+        if instances is None:
+            def filter_w_obj(w_obj, extra):
+                w_class, space = extra
+                return w_obj.has_class() and w_obj.getclass(space) is w_class
+            instances = gcrefs.collect_gc_references_of_type(model.W_Object, filter_w_obj, (w_class, space))
+            s_frame.store_instances_array(w_class, instances)
+        return instances
 
 @expose_primitive(SOME_INSTANCE, unwrap_spec=[object])
 def func(interp, s_frame, w_class):
@@ -935,32 +917,6 @@ def func(interp, s_frame, w_rcvr):
         w_class = assert_pointers(w_class)
         w_class.as_class_get_shadow(interp.space).flush_method_caches()
     return w_rcvr
-
-@objectmodel.specialize.arg(0)
-def walk_gc_references(func, gcrefs):
-    from rpython.rlib import rgc
-    for gcref in gcrefs:
-        if gcref and not rgc.get_gcflag_extra(gcref):
-            try:
-                rgc.toggle_gcflag_extra(gcref)
-                func(gcref)
-                walk_gc_references(func, rgc.get_rpy_referents(gcref))
-            finally:
-                rgc.toggle_gcflag_extra(gcref)
-
-@objectmodel.specialize.arg(0)
-def walk_gc_objects(func):
-    from rpython.rlib import rgc
-    walk_gc_references(func, rgc.get_rpy_roots())
-
-@objectmodel.specialize.arg(0, 1)
-def walk_gc_objects_of_type(type, func):
-    from rpython.rlib import rgc
-    def check_type(gcref):
-        w_obj = rgc.try_cast_gcref_to_instance(type, gcref)
-        if w_obj:
-            func(w_obj)
-    walk_gc_objects(check_type)
     
 if not stm_enabled():
     # XXX: We don't have a global symbol cache. Instead, we walk all
@@ -969,7 +925,7 @@ if not stm_enabled():
     def func(interp, s_frame, w_rcvr):
         # This takes a long time (at least in interpreted mode), and is not really necessary.
         # We are monitoring changes to MethodDictionaries, so there is no need for the image to tell us.
-        #walk_gc_objects_of_type(shadow.MethodDictionaryShadow, lambda s_dict: s_dict.flush_method_cache())
+        # gcrefs.walk_gc_references_of_type(shadow.MethodDictionaryShadow, lambda s_dict: s_dict.flush_method_cache())
         return w_rcvr
 
 # ___________________________________________________________________________
