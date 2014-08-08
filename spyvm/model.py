@@ -987,16 +987,16 @@ class W_WordsObject(W_AbstractObjectWithClassReference):
     def convert_to_c_layout(self):
         if self.words is None:
             return self.c_words
-        else:
-            from spyvm.interpreter_proxy import sqIntArrayPtr
-            size = self.size()
-            old_words = self.words
-            c_words = self.c_words = lltype.malloc(sqIntArrayPtr.TO, size, flavor='raw')
-            for i in range(size):
-                c_words[i] = intmask(old_words[i])
-            self.words = None
-            return c_words
-    
+        # else:
+        #     from spyvm.interpreter_proxy import sqIntArrayPtr
+        #     size = self.size()
+        #     old_words = self.words
+        #     c_words = self.c_words = lltype.malloc(sqIntArrayPtr.TO, size, flavor='raw')
+        #     for i in range(size):
+        #         c_words[i] = intmask(old_words[i])
+        #     self.words = None
+        #     return c_words
+
     def _become(self, w_other):
         assert isinstance(w_other, W_WordsObject)
         self.words, w_other.words = w_other.words, self.words

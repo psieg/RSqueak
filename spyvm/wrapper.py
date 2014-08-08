@@ -298,5 +298,5 @@ class MaskWrapper(Wrapper):
     extend_y   = make_int_getter(2)
     depth      = make_int_getter(3)
 
-class CursorWrapper(MaskWrapper):
-    offset   = make_getter(4)
+# class CursorWrapper(MaskWrapper):
+#     offset   = make_getter(4)

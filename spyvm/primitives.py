@@ -712,14 +712,15 @@ def func(interp, s_frame, argcount):
     depth = interp.space.unwrap_int(w_rcvr.fetch(interp.space, 3))
     hotpt = wrapper.PointWrapper(interp.space, w_rcvr.fetch(interp.space, 4))
     if not interp.image.is_modern:
-        display.SDLCursor.set(
-            w_bitmap.words,
-            width,
-            height,
-            hotpt.x(),
-            hotpt.y(),
-            mask_words=mask_words
-        )
+        # display.SDLCursor.set(
+        #     w_bitmap.words,
+        #     width,
+        #     height,
+        #     hotpt.x(),
+        #     hotpt.y(),
+        #     mask_words=mask_words
+        # )
+        pass
     else:
         # TODO: Implement
         pass
@@ -890,18 +891,18 @@ def func(interp, s_frame, argcount, w_method):
     if signature[0] == 'BitBltPlugin':
         from spyvm.plugins.bitblt import BitBltPlugin
         return BitBltPlugin.call(signature[1], interp, s_frame, argcount, w_method)
-    elif signature[0] == "SocketPlugin":
-        from spyvm.plugins.socket import SocketPlugin
-        return SocketPlugin.call(signature[1], interp, s_frame, argcount, w_method)
+    # elif signature[0] == "SocketPlugin":
+    #     from spyvm.plugins.socket import SocketPlugin
+    #     return SocketPlugin.call(signature[1], interp, s_frame, argcount, w_method)
     elif signature[0] == "FilePlugin":
         from spyvm.plugins.fileplugin import FilePlugin
         return FilePlugin.call(signature[1], interp, s_frame, argcount, w_method)
     elif signature[0] == "VMDebugging":
         from spyvm.plugins.vmdebugging import DebuggingPlugin
         return DebuggingPlugin.call(signature[1], interp, s_frame, argcount, w_method)
-    else:
-        from spyvm.interpreter_proxy import IProxy
-        return IProxy.call(signature, interp, s_frame, argcount, w_method)
+    # else:
+    #     from spyvm.interpreter_proxy import IProxy
+    #     return IProxy.call(signature, interp, s_frame, argcount, w_method)
     raise PrimitiveFailedError
 
 @expose_primitive(COMPILED_METHOD_FLUSH_CACHE, unwrap_spec=[object])
@@ -1497,6 +1498,7 @@ FORCE_DISPLAY_UPDATE = 231
 @expose_primitive(IDLE_FOR_MICROSECONDS, unwrap_spec=[object, int], no_result=True, clean_stack=False)
 def func(interp, s_frame, w_rcvr, time_mu_s):
     import time
+    from spyvm.interpreter import ProcessSwitch
     s_frame.pop()
     time_s = time_mu_s / 1000000.0
     interp.interrupt_check_counter = 0
@@ -1504,6 +1506,8 @@ def func(interp, s_frame, w_rcvr, time_mu_s):
     time.sleep(time_s)
     interp.interrupt_check_counter = 0
     interp.quick_check_for_interrupt(s_frame, dec=0)
+    if interp.is_async:
+        raise ProcessSwitch(s_frame)
 
 @expose_primitive(FORCE_DISPLAY_UPDATE, unwrap_spec=[object])
 def func(interp, s_frame, w_rcvr):

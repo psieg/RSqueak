@@ -61,7 +61,7 @@ def get_printable_location(pc, self, method):
 class Interpreter(object):
     _immutable_fields_ = ["space", "image",
                           "interrupt_counter_size", "trace_important",
-                          "startup_time", "evented", "interrupts"]
+                          "startup_time", "evented", "interrupts", "is_async"]
 
     jit_driver = jit.JitDriver(
         greens=['pc', 'self', 'method'],
@@ -71,10 +71,11 @@ class Interpreter(object):
     )
 
     def __init__(self, space, image=None, trace_important=False,
-                trace=False, evented=True, interrupts=True):
+                trace=False, evented=True, interrupts=True, is_async=False):
         # === Initialize immutable variables
         self.space = space
         self.image = image
+        self.is_async = is_async
         if image:
             self.startup_time = image.startup_time
         else:
@@ -105,6 +106,8 @@ class Interpreter(object):
             except ContextSwitchException, e:
                 if self.is_tracing():
                     e.print_trace()
+                if self.is_async:
+                    return e.s_new_context.w_self()
                 s_context = e.s_new_context
             except Return, ret:
                 target = s_sender if ret.arrived_at_target else ret.s_target_context
