@@ -47,7 +47,7 @@ class SDLDisplay(object):
         assert RSDL.Init(RSDL.INIT_VIDEO) >= 0
         RSDL.WM_SetCaption(title, "RSqueakVM")
         RSDL.EnableUNICODE(1)
-        SDLCursor.has_display = True
+        # SDLCursor.has_display = True
         self.has_surface = False
         self.mouse_position = [0, 0]
         self.interrupt_key = 15 << 8 # pushing all four meta keys, of which we support three...
@@ -270,45 +270,45 @@ class SDLDisplay(object):
         self.interrupt_key = encoded_key
 
 
-class SDLCursorClass(object):
-    _attrs_ = ["cursor", "has_cursor", "has_display"]
+# class SDLCursorClass(object):
+#     _attrs_ = ["cursor", "has_cursor", "has_display"]
 
-    instance = None
+#     instance = None
 
-    def __init__(self):
-        self.cursor = lltype.nullptr(RSDL.CursorPtr.TO)
-        self.has_cursor = False
-        self.has_display = False
+#     def __init__(self):
+#         self.cursor = lltype.nullptr(RSDL.CursorPtr.TO)
+#         self.has_cursor = False
+#         self.has_display = False
 
-    def set(self, data_words, w, h, x, y, mask_words=None):
-        if not self.has_display:
-            return
-        if self.has_cursor:
-            RSDL.FreeCursor(self.cursor)
-        data = self.words_to_bytes(len(data_words) * 4, data_words)
-        try:
-            mask = self.words_to_bytes(len(data_words) * 4, mask_words)
-            try:
-                self.cursor = RSDL.CreateCursor(data, mask, w * 2, h, x, y)
-                self.has_cursor = True
-                RSDL.SetCursor(self.cursor)
-            finally:
-                lltype.free(mask, flavor="raw")
-        finally:
-            lltype.free(data, flavor="raw")
+#     def set(self, data_words, w, h, x, y, mask_words=None):
+#         if not self.has_display:
+#             return
+#         if self.has_cursor:
+#             RSDL.FreeCursor(self.cursor)
+#         data = self.words_to_bytes(len(data_words) * 4, data_words)
+#         try:
+#             mask = self.words_to_bytes(len(data_words) * 4, mask_words)
+#             try:
+#                 self.cursor = RSDL.CreateCursor(data, mask, w * 2, h, x, y)
+#                 self.has_cursor = True
+#                 RSDL.SetCursor(self.cursor)
+#             finally:
+#                 lltype.free(mask, flavor="raw")
+#         finally:
+#             lltype.free(data, flavor="raw")
 
-    def words_to_bytes(self, bytenum, words):
-        bytes = lltype.malloc(RSDL.Uint8P.TO, bytenum, flavor="raw")
-        if words:
-            for pos in range(bytenum / 4):
-                word = words[pos]
-                bytes[pos * 4] = rffi.r_uchar((word >> 24) & 0xff)
-                bytes[pos * 4 + 1] = rffi.r_uchar((word >> 16) & 0xff)
-                bytes[pos * 4 + 2] = rffi.r_uchar((word >> 8) & 0xff)
-                bytes[pos * 4 + 3] = rffi.r_uchar(word & 0xff)
-        else:
-            for idx in range(bytenum):
-                bytes[idx] = rffi.r_uchar(0)
-        return bytes
+#     def words_to_bytes(self, bytenum, words):
+#         bytes = lltype.malloc(RSDL.Uint8P.TO, bytenum, flavor="raw")
+#         if words:
+#             for pos in range(bytenum / 4):
+#                 word = words[pos]
+#                 bytes[pos * 4] = rffi.r_uchar((word >> 24) & 0xff)
+#                 bytes[pos * 4 + 1] = rffi.r_uchar((word >> 16) & 0xff)
+#                 bytes[pos * 4 + 2] = rffi.r_uchar((word >> 8) & 0xff)
+#                 bytes[pos * 4 + 3] = rffi.r_uchar(word & 0xff)
+#         else:
+#             for idx in range(bytenum):
+#                 bytes[idx] = rffi.r_uchar(0)
+#         return bytes
 
-SDLCursor = SDLCursorClass()
+# SDLCursor = SDLCursorClass()

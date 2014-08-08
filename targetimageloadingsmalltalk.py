@@ -3,12 +3,14 @@ import sys, time
 import os
 
 from rpython.rlib.streamio import open_file_as_stream
-from rpython.rlib import jit, rpath, objectmodel
+from rpython.rlib import jit, rpath, objectmodel, rgc
+from rpython.rlib.entrypoint import entrypoint
+from rpython.rtyper.lltypesystem import rffi, llmemory, lltype
 
 from spyvm import model, interpreter, squeakimage, objspace, wrapper,\
     error, shadow, storage_logger, constants
 from spyvm.tool.analyseimage import create_image
-from spyvm.interpreter_proxy import VirtualMachine
+# from spyvm.interpreter_proxy import VirtualMachine
 
 def _usage(argv):
     print """
@@ -200,6 +202,61 @@ def entry_point(argv):
     storage_logger.print_aggregated_log()
     return 0
 
+
+@entrypoint('main', [rffi.INT], c_name='load_image')
+def load_image(bitflags):
+    trace = (bitflags & 0b1) != 0
+    trace_important = (bitflags & 0b10) != 0
+    safe_trace = (bitflags & 0b100) != 0
+
+    space = prebuilt_space
+    if safe_trace:
+        space.omit_printing_raw_bytes.activate()
+    path = rpath.rabspath("/Squeak.image")
+    try:
+        f = open_file_as_stream(path, mode="rb", buffering=0)
+        try:
+            imagedata = f.readall()
+        finally:
+            f.close()
+    except OSError as e:
+        print_error("%s -- %s (LoadError)" % (os.strerror(e.errno), path))
+        return 1
+    # Load & prepare image and environment
+    image_reader = squeakimage.reader_for_image(space, squeakimage.Stream(data=imagedata))
+    image = create_image(space, image_reader)
+    interp = interpreter.Interpreter(space, image,
+                                     trace=trace, trace_important=trace_important,
+                                     evented=False, is_async=True)
+    space.runtime_setup("./rsqueak.vm.js", path)
+    print_error("") # Line break after image-loading characters
+    return rffi.cast(rffi.INT, interp)
+
+@entrypoint('main', [rffi.INT], c_name='load_active_context')
+def load_active_context(i_interp):
+    gcref = rffi.cast(llmemory.GCREF, i_interp)
+    interp = rgc.try_cast_gcref_to_instance(interpreter.Interpreter, gcref)
+    space = interp.space
+    context = active_context(space)
+    return rffi.cast(rffi.INT, context.w_self())
+
+@entrypoint('main', [rffi.INT, rffi.INT], c_name='execute_async')
+def execute_async(i_interp, i_w_frame):
+    i_gcref = rffi.cast(llmemory.GCREF, i_interp)
+    interp = rgc.try_cast_gcref_to_instance(interpreter.Interpreter, i_gcref)
+    f_gcref = rffi.cast(llmemory.GCREF, i_w_frame)
+    w_frame = rgc.try_cast_gcref_to_instance(model.W_PointersObject, f_gcref)
+    try:
+        w_context = interp.loop(w_frame)
+        print result_string(w_context)
+        # print w_context.as_context_get_shadow(interp.space).print_stack()
+        return rffi.cast(rffi.INT, w_context)
+    except interpreter.ReturnFromTopLevel, e:
+        print "returned from toplevel"
+        print result_string(e.object)
+        return 0
+
+
 def result_string(w_result):
     # This will also print contents of strings/symbols/numbers
     if not w_result:
@@ -279,7 +336,17 @@ def target(driver, *args):
     if hasattr(rgc, "stm_is_enabled"):
         driver.config.translation.stm = True
         driver.config.translation.thread = True
+
     driver.exe_name = "rsqueak"
+
+    from rpython.translator import platform
+    if hasattr(platform, "emscripten_platform"):
+        # platform.emscripten_platform.EmscriptenPlatform.exe_ext = "js"
+        platform.emscripten_platform.EmscriptenPlatform.link_flags += [
+            "--embed-file", "/home/tim/Dev/lang-smalltalk/images/minibluebookdebug.image@/Squeak.image"
+        ]
+        driver.exe_name = "rsqueak.js"
+
     return safe_entry_point, None
 
 def jitpolicy(self):
