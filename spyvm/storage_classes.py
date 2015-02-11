@@ -275,6 +275,20 @@ class MethodDictionaryShadow(ListStorageShadow):
         if other_s_class:
             other_s_class.store_s_methoddict(self)
 
+    def s_become(self, w_self, w_other):
+        self._s_become(w_self, w_other.shadow, w_other)
+
+    def _s_become(self, w_self, s_other_ignored, w_other):
+        # Force other to become a methoddict
+        s_other = w_other.as_methoddict_get_shadow(self.space)
+        # Do normal self ptr swap
+        ListStorageShadow._s_become(self, w_self, s_other, w_other)
+        # Swap class pointers
+        self.s_class, s_other.s_class = s_other.s_class, self.s_class
+        # Conditionally inform the class about the swap
+        if self.s_class: self.s_class.store_s_methoddict(self)
+        if s_other.s_class: s_other.s_class.store_s_methoddict(s_other)
+
     def update(self):
         self.sync_method_cache()
 
@@ -298,20 +312,20 @@ class MethodDictionaryShadow(ListStorageShadow):
             # the caller / user cannot be expected to add the compiledMethod to the observee next
             # in case of clone / copyFrom the compiledMethod is already contained
             self.sync_method_cache()
-    
+
     def setup_notification(self):
         self.w_values().as_observed_get_shadow(self.space).notify(self)
-        
+
     def w_values(self):
         w_values = self.fetch(constants.METHODDICT_VALUES_INDEX)
         assert isinstance(w_values, model.W_PointersObject)
         return w_values
-        
-    def flush_method_cache(self):   
+
+    def flush_method_cache(self):
         # Lazy synchronization: Only flush the cache, if we are already synchronized.
         if self.invalid:
             self.sync_method_cache()
-        
+
     def sync_method_cache(self):
         if self.size() == 0:
             return
