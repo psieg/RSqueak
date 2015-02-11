@@ -313,7 +313,7 @@ class __extend__(ContextPartShadow):
         if not isinstance(w_method, model.W_CompiledMethod):
             if w_arguments:
                 self.push_all(w_arguments)
-                return self._sendOamSelector(interp, argcount, w_method, w_selector)
+            return self._sendOamSelector(interp, argcount, w_method, w_selector)
 
         code = w_method.primitive()
         if code:
